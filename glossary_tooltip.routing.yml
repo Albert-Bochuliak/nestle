@@ -1,0 +1,7 @@
+glossary_tooltip.settings:
+  path: '/admin/config/content/glossary-tooltip'
+  defaults:
+    _form: 'Drupal\glossary_tooltip\Form\GlossaryTooltipSettingsForm'
+    _title: 'Glossary Tooltip settings'
+  requirements:
+    _permission: 'administer glossary tooltip'

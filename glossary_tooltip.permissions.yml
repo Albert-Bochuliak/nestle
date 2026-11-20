@@ -1,0 +1,3 @@
+administer glossary tooltip:
+  title: 'Administer Glossary Tooltip settings'
+  restrict access: true

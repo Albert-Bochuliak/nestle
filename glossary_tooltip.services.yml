@@ -1,0 +1,18 @@
+services:
+  logger.channel.glossary_tooltip:
+    parent: logger.channel_base
+    arguments: ['glossary_tooltip']
+
+  glossary_tooltip.term_provider:
+    class: Drupal\glossary_tooltip\GlossaryTermProvider
+    arguments:
+      - '@entity_type.manager'
+      - '@cache.discovery'
+      - '@logger.channel.glossary_tooltip'
+
+  glossary_tooltip.highlighter:
+    class: Drupal\glossary_tooltip\GlossaryHighlighter
+    arguments:
+      - '@glossary_tooltip.term_provider'
+      - '@config.factory'
+      - '@logger.channel.glossary_tooltip'
