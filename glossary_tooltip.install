@@ -1,0 +1,41 @@
+<?php
+
+/**
+ * @file
+ * Install hooks for the Glossary Tooltip module.
+ */
+
+use Drupal\taxonomy\Entity\Vocabulary;
+
+/**
+ * Implements hook_install().
+ *
+ * Creates the "Glossary" vocabulary used for tooltip terms. The vocabulary
+ * ships with the built-in Title (name) and Description (long text) fields.
+ */
+function glossary_tooltip_install(): void {
+  $vid = 'glossary';
+
+  try {
+    $storage = \Drupal::entityTypeManager()->getStorage('taxonomy_vocabulary');
+
+    if ($storage->load($vid) !== NULL) {
+      return;
+    }
+
+    Vocabulary::create([
+      'vid' => $vid,
+      'name' => 'Glossary',
+      'description' => 'Glossary terms highlighted in content with tooltips.',
+    ])->save();
+
+    \Drupal::messenger()->addStatus(t('The "Glossary" vocabulary was created.'));
+  }
+  catch (\Throwable $exception) {
+    \Drupal::logger('glossary_tooltip')->error('Failed to create the glossary vocabulary: @message', [
+      '@message' => $exception->getMessage(),
+    ]);
+
+    throw $exception;
+  }
+}

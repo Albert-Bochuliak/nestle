@@ -1,0 +1,7 @@
+glossary_tooltip.settings:
+  type: config_object
+  label: 'Glossary Tooltip settings'
+  mapping:
+    first_occurrence_only:
+      type: boolean
+      label: 'Highlight only the first occurrence of each term'

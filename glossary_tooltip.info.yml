@@ -1,0 +1,8 @@
+name: 'Glossary Tooltip'
+type: module
+description: 'The words that match / are identical to the items in the glossary vocabulary are highlighted.'
+core_version_requirement: ^11
+package: Custom
+dependencies:
+  - drupal:filter
+  - drupal:taxonomy
