@@ -1,0 +1,10 @@
+glossary_tooltip:
+  version: 1.x
+  css:
+    theme:
+      css/glossary-tooltip.css: {}
+  js:
+    js/glossary-tooltip.js: { attributes: { defer: true } }
+  dependencies:
+    - core/drupal
+    - core/once

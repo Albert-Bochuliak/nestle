@@ -1,0 +1,102 @@
+/**
+ * @file
+ * Glossary Tooltip styling, based on the Figma design.
+ */
+
+.glossary-term {
+  position: relative;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.glossary-term:focus-visible {
+  outline: 2px solid #0a4f5a;
+  outline-offset: 2px;
+}
+
+.glossary-tooltip {
+  position: absolute;
+  left: 50%;
+  z-index: 100;
+  display: block;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 320px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  background: #0a4f5a;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%) translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+  pointer-events: none;
+}
+
+.glossary-tooltip--below {
+  top: calc(100% + 10px);
+}
+
+.glossary-tooltip--above {
+  bottom: calc(100% + 10px);
+}
+
+/* Arrow pointer towards the term. */
+.glossary-tooltip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.glossary-tooltip--below::after {
+  top: -6px;
+}
+
+.glossary-tooltip--above::after {
+  bottom: -6px;
+}
+
+/* Measurable but invisible state used by the JS positioning step. */
+.glossary-term.is-measuring > .glossary-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.glossary-term.is-open > .glossary-tooltip,
+.glossary-term:focus-within > .glossary-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.glossary-tooltip__content {
+  display: block;
+}
+
+.glossary-tooltip__link {
+  display: inline-block;
+  margin-top: 6px;
+  color: #b7e4ea;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.glossary-tooltip__link::after {
+  content: ' ↗';
+}
+
+.glossary-tooltip__link:hover,
+.glossary-tooltip__link:focus {
+  color: #fff;
+}
