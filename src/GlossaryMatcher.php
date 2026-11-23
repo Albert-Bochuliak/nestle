@@ -63,6 +63,17 @@ final class GlossaryMatcher {
   }
 
   /**
+   * Normalizes a term name or matched text into a lookup key.
+   *
+   * Lowercases the value and collapses whitespace so a multi-word match
+   * like "wet\nfood" still resolves to the "wet food" term.
+   */
+  public function normalize(string $text): string {
+    $text = preg_replace('/\s+/u', ' ', trim($text)) ?? '';
+    return mb_strtolower($text);
+  }
+
+  /**
    * Builds the term alternation pattern, longest terms first.
    *
    * @param string[] $names

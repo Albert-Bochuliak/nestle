@@ -39,15 +39,13 @@ final class GlossaryHighlighter {
     'textarea',
   ];
 
-  private readonly GlossaryMatcher $matcher;
-
   public function __construct(
     private readonly GlossaryTermProvider $termProvider,
+    private readonly GlossaryMatcher $matcher,
     private readonly ConfigFactoryInterface $configFactory,
     private readonly LoggerInterface $logger,
     ?TranslationInterface $translation = NULL,
   ) {
-    $this->matcher = new GlossaryMatcher();
     if ($translation !== NULL) {
       $this->setStringTranslation($translation);
     }
@@ -80,33 +78,34 @@ final class GlossaryHighlighter {
       $xpath = new \DOMXPath($document);
       $text_nodes = iterator_to_array($xpath->query('//text()') ?: []);
 
-      $names = array_column($terms, 'name');
-      $lookup = [];
+      $context = [
+        'terms' => $terms,
+        'names' => array_column($terms, 'name'),
+        'lookup' => [],
+        'seen' => [],
+        'counter' => 0,
+        'first_only' => (bool) $this->configFactory
+          ->get('glossary_tooltip.settings')
+          ->get('first_occurrence_only'),
+      ];
       foreach ($terms as $term_id => $term) {
-        $lookup[$this->normalizeKey($term['name'])] = $term_id;
+        $context['lookup'][$this->matcher->normalize($term['name'])] = $term_id;
       }
-
-      $first_only = (bool) $this->configFactory
-        ->get('glossary_tooltip.settings')
-        ->get('first_occurrence_only');
-
-      $seen = [];
-      $counter = 0;
 
       foreach ($text_nodes as $text_node) {
         if (!$text_node instanceof \DOMText || $this->isSkipped($text_node)) {
           continue;
         }
 
-        $matches = $this->matcher->findMatches($text_node->nodeValue ?? '', $names);
+        $matches = $this->matcher->findMatches($text_node->nodeValue ?? '', $context['names']);
         if ($matches === []) {
           continue;
         }
 
-        $this->wrapMatches($document, $text_node, $matches, $terms, $lookup, $seen, $counter, $first_only);
+        $this->wrapMatches($document, $text_node, $matches, $context);
       }
 
-      if ($counter > 0) {
+      if ($context['counter'] > 0) {
         $result['text'] = Html::serialize($document);
         $result['matched'] = TRUE;
       }
@@ -138,24 +137,16 @@ final class GlossaryHighlighter {
    *
    * @param array<int, array{offset: int, length: int, text: string}> $matches
    *   Matches inside the text node.
-   * @param array<int, array{name: string, description: string, url: string}> $terms
-   *   Term data keyed by term ID.
-   * @param array<string, int> $lookup
-   *   Normalized term name (see ::normalizeKey()) to term ID.
-   * @param array<int, bool> $seen
-   *   Term IDs already highlighted (for first-occurrence mode).
-   * @param int $counter
-   *   Running count of created tooltips; used for unique IDs.
+   * @param array $context
+   *   Highlighting run state: "terms" (term data keyed by ID), "lookup"
+   *   (normalized name to term ID), "seen" (already highlighted term IDs),
+   *   "counter" (created tooltips), "first_only" (setting flag).
    */
   private function wrapMatches(
     \DOMDocument $document,
     \DOMText $text_node,
     array $matches,
-    array $terms,
-    array $lookup,
-    array &$seen,
-    int &$counter,
-    bool $first_only,
+    array &$context,
   ): void {
     $parent = $text_node->parentNode;
     if (!$parent instanceof \DOMNode) {
@@ -167,13 +158,9 @@ final class GlossaryHighlighter {
     $inserted = FALSE;
 
     foreach ($matches as $match) {
-      $term_id = $lookup[$this->normalizeKey($match['text'])] ?? NULL;
+      $term_id = $context['lookup'][$this->matcher->normalize($match['text'])] ?? NULL;
 
-      if ($term_id === NULL) {
-        continue;
-      }
-
-      if ($first_only && isset($seen[$term_id])) {
+      if ($term_id === NULL || ($context['first_only'] && isset($context['seen'][$term_id]))) {
         continue;
       }
 
@@ -185,11 +172,11 @@ final class GlossaryHighlighter {
       }
 
       $parent->insertBefore(
-        $this->buildTermElement($document, $match['text'], $terms[$term_id], $term_id, ++$counter),
+        $this->buildTermElement($document, $match['text'], $context['terms'][$term_id], $term_id, ++$context['counter']),
         $text_node,
       );
 
-      $seen[$term_id] = TRUE;
+      $context['seen'][$term_id] = TRUE;
       $inserted = TRUE;
       $position = $match['offset'] + $match['length'];
     }
@@ -203,17 +190,6 @@ final class GlossaryHighlighter {
     }
 
     $parent->removeChild($text_node);
-  }
-
-  /**
-   * Normalizes a term name or matched text into a lookup key.
-   *
-   * Lowercases the value and collapses whitespace so a multi-word match
-   * like "wet\nfood" still resolves to the "wet food" term.
-   */
-  private function normalizeKey(string $text): string {
-    $text = preg_replace('/\s+/u', ' ', trim($text)) ?? '';
-    return mb_strtolower($text);
   }
 
   /**

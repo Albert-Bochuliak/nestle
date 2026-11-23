@@ -5,9 +5,29 @@
 (function (Drupal, once) {
   'use strict';
 
+  // The currently open term: { term, hide } or null. A single pair of
+  // delegated document listeners handles Escape and outside clicks for
+  // all terms instead of registering listeners per term.
+  let openTerm = null;
+  let globalBound = false;
+
   Drupal.behaviors.glossaryTooltip = {
     attach: function (context) {
       once('glossary-tooltip', '.glossary-term', context).forEach(initTerm);
+      if (!globalBound) {
+        globalBound = true;
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape' && openTerm) {
+            openTerm.hide();
+            openTerm.term.focus();
+          }
+        });
+        document.addEventListener('click', function (event) {
+          if (openTerm && !openTerm.term.contains(event.target)) {
+            openTerm.hide();
+          }
+        });
+      }
     },
   };
 
@@ -20,16 +40,23 @@
     let isOpen = false;
 
     function show() {
+      if (openTerm && openTerm.term !== term) {
+        openTerm.hide();
+      }
       positionTooltip(term, tooltip);
       term.classList.add('is-open');
       term.setAttribute('aria-expanded', 'true');
       isOpen = true;
+      openTerm = { term: term, hide: hide };
     }
 
     function hide() {
       term.classList.remove('is-open');
       term.setAttribute('aria-expanded', 'false');
       isOpen = false;
+      if (openTerm && openTerm.term === term) {
+        openTerm = null;
+      }
     }
 
     term.addEventListener('mouseenter', show);
@@ -54,23 +81,11 @@
         show();
       }
     });
-
-    document.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape' && isOpen) {
-        hide();
-        term.focus();
-      }
-    });
-
-    document.addEventListener('click', function (event) {
-      if (isOpen && !term.contains(event.target)) {
-        hide();
-      }
-    });
   }
 
   /**
-   * Places the tooltip above or below the term depending on free space.
+   * Places the tooltip above or below the term depending on free space,
+   * and clamps it horizontally to the surrounding text block.
    */
   function positionTooltip(term, tooltip) {
     tooltip.classList.remove('glossary-tooltip--above', 'glossary-tooltip--below');
