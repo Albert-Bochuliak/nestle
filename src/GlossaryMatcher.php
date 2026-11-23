@@ -18,6 +18,13 @@ final class GlossaryMatcher {
   private const WORD_CHARS = '\p{L}\p{N}_';
 
   /**
+   * Single-slot pattern cache, keyed by the joined term names.
+   *
+   * @var array{key: string, pattern: string|null}|null
+   */
+  private ?array $patternCache = NULL;
+
+  /**
    * Finds all non-overlapping term occurrences in the given text.
    *
    * Matching is case-insensitive and Unicode-safe. When several terms can
@@ -83,12 +90,18 @@ final class GlossaryMatcher {
    *   A PCRE pattern, or NULL when there is nothing to match.
    */
   private function buildPattern(array $names): ?string {
+    $key = implode("\x00", $names);
+    if ($this->patternCache !== NULL && $this->patternCache['key'] === $key) {
+      return $this->patternCache['pattern'];
+    }
+
     $names = array_values(array_unique(array_filter(
       array_map(static fn(string $name): string => trim($name), $names),
       static fn(string $name): bool => $name !== '',
     )));
 
     if ($names === []) {
+      $this->patternCache = ['key' => $key, 'pattern' => NULL];
       return NULL;
     }
 
@@ -104,7 +117,10 @@ final class GlossaryMatcher {
       ));
     }, $names);
 
-    return '/(?<![' . self::WORD_CHARS . '])(?:' . implode('|', $alternatives) . ')(?![' . self::WORD_CHARS . '])/iu';
+    $pattern = '/(?<![' . self::WORD_CHARS . '])(?:' . implode('|', $alternatives) . ')(?![' . self::WORD_CHARS . '])/iu';
+    $this->patternCache = ['key' => $key, 'pattern' => $pattern];
+
+    return $pattern;
   }
 
 }

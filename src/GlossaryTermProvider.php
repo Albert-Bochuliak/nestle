@@ -37,14 +37,20 @@ final class GlossaryTermProvider {
    *   Term data keyed by term ID.
    */
   public function getTerms(): array {
-    if ($this->terms !== NULL) {
-      return $this->terms;
-    }
+    return $this->terms ??= $this->readCache() ?? $this->loadAndCache();
+  }
 
+  /**
+   * Returns cached terms, or NULL on a miss or a cache backend failure.
+   *
+   * @return array<int, array{name: string, description: string, url: string}>|null
+   *   Term data keyed by term ID, or NULL.
+   */
+  private function readCache(): ?array {
     try {
       $cached = $this->cache->get(self::CACHE_ID);
       if ($cached !== FALSE && is_array($cached->data)) {
-        return $this->terms = $cached->data;
+        return $cached->data;
       }
     }
     catch (\Throwable $exception) {
@@ -53,10 +59,20 @@ final class GlossaryTermProvider {
       ]);
     }
 
-    $this->terms = $this->loadTerms();
+    return NULL;
+  }
+
+  /**
+   * Loads terms from storage and stores them in the cache.
+   *
+   * @return array<int, array{name: string, description: string, url: string}>
+   *   Term data keyed by term ID.
+   */
+  private function loadAndCache(): array {
+    $terms = $this->loadTerms();
 
     try {
-      $this->cache->set(self::CACHE_ID, $this->terms, Cache::PERMANENT, $this->getCacheTags());
+      $this->cache->set(self::CACHE_ID, $terms, Cache::PERMANENT, $this->getCacheTags());
     }
     catch (\Throwable $exception) {
       $this->logger->warning('Could not write glossary term cache: @message', [
@@ -64,7 +80,7 @@ final class GlossaryTermProvider {
       ]);
     }
 
-    return $this->terms;
+    return $terms;
   }
 
   /**

@@ -78,26 +78,20 @@ final class GlossaryHighlighter {
       $xpath = new \DOMXPath($document);
       $text_nodes = iterator_to_array($xpath->query('//text()') ?: []);
 
-      $context = [
-        'terms' => $terms,
-        'names' => array_column($terms, 'name'),
-        'lookup' => [],
-        'seen' => [],
-        'counter' => 0,
-        'first_only' => (bool) $this->configFactory
+      $context = HighlightContext::create(
+        $terms,
+        (bool) $this->configFactory
           ->get('glossary_tooltip.settings')
           ->get('first_occurrence_only'),
-      ];
-      foreach ($terms as $term_id => $term) {
-        $context['lookup'][$this->matcher->normalize($term['name'])] = $term_id;
-      }
+        $this->matcher,
+      );
 
       foreach ($text_nodes as $text_node) {
         if (!$text_node instanceof \DOMText || $this->isSkipped($text_node)) {
           continue;
         }
 
-        $matches = $this->matcher->findMatches($text_node->nodeValue ?? '', $context['names']);
+        $matches = $this->matcher->findMatches($text_node->nodeValue ?? '', $context->names());
         if ($matches === []) {
           continue;
         }
@@ -105,7 +99,7 @@ final class GlossaryHighlighter {
         $this->wrapMatches($document, $text_node, $matches, $context);
       }
 
-      if ($context['counter'] > 0) {
+      if ($context->counter() > 0) {
         $result['text'] = Html::serialize($document);
         $result['matched'] = TRUE;
       }
@@ -137,16 +131,14 @@ final class GlossaryHighlighter {
    *
    * @param array<int, array{offset: int, length: int, text: string}> $matches
    *   Matches inside the text node.
-   * @param array $context
-   *   Highlighting run state: "terms" (term data keyed by ID), "lookup"
-   *   (normalized name to term ID), "seen" (already highlighted term IDs),
-   *   "counter" (created tooltips), "first_only" (setting flag).
+   * @param \Drupal\glossary_tooltip\HighlightContext $context
+   *   Highlighting run state.
    */
   private function wrapMatches(
     \DOMDocument $document,
     \DOMText $text_node,
     array $matches,
-    array &$context,
+    HighlightContext $context,
   ): void {
     $parent = $text_node->parentNode;
     if (!$parent instanceof \DOMNode) {
@@ -158,9 +150,8 @@ final class GlossaryHighlighter {
     $inserted = FALSE;
 
     foreach ($matches as $match) {
-      $term_id = $context['lookup'][$this->matcher->normalize($match['text'])] ?? NULL;
-
-      if ($term_id === NULL || ($context['first_only'] && isset($context['seen'][$term_id]))) {
+      $hit = $context->termFor($match['text']);
+      if ($hit === NULL) {
         continue;
       }
 
@@ -172,11 +163,10 @@ final class GlossaryHighlighter {
       }
 
       $parent->insertBefore(
-        $this->buildTermElement($document, $match['text'], $context['terms'][$term_id], $term_id, ++$context['counter']),
+        $this->buildTermElement($document, $match['text'], $hit['data'], $hit['id'], $context->nextCounter()),
         $text_node,
       );
 
-      $context['seen'][$term_id] = TRUE;
       $inserted = TRUE;
       $position = $match['offset'] + $match['length'];
     }
