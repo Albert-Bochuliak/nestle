@@ -30,6 +30,20 @@ final class GlossaryHighlighter {
     'textarea',
   ];
 
+  /**
+   * Constructor, which made 
+   *
+   * @param \Drupal\glossary_tooltip\GlossaryTermProvider $termProvider
+   *   Loads and caches published glossary terms.
+   * @param \Drupal\glossary_tooltip\GlossaryMatcher $matcher
+   *   Finds term occurrences in plain text.
+   * @param \Drupal\glossary_tooltip\TooltipElementBuilder $elementBuilder
+   *   Builds the tooltip markup for each matched term.
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $configFactory
+   *   Reads the module settings (first-occurrence mode).
+   * @param \Psr\Log\LoggerInterface $logger
+   *   Logs highlighting failures.
+   */
   public function __construct(
     private readonly GlossaryTermProvider $termProvider,
     private readonly GlossaryMatcher $matcher,
@@ -127,12 +141,7 @@ final class GlossaryHighlighter {
    * @param \Drupal\glossary_tooltip\HighlightContext $context
    *   Highlighting run state.
    */
-  private function wrapMatches(
-    \DOMDocument $document,
-    \DOMText $text_node,
-    array $matches,
-    HighlightContext $context,
-  ): void {
+  private function wrapMatches(\DOMDocument $document, \DOMText $text_node, array $matches, HighlightContext $context): void {
     $parent = $text_node->parentNode;
     if (!$parent instanceof \DOMNode) {
       return;
