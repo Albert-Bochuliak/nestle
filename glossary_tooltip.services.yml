@@ -13,10 +13,16 @@ services:
   glossary_tooltip.matcher:
     class: Drupal\glossary_tooltip\GlossaryMatcher
 
+  glossary_tooltip.element_builder:
+    class: Drupal\glossary_tooltip\TooltipElementBuilder
+    arguments:
+      - '@string_translation'
+
   glossary_tooltip.highlighter:
     class: Drupal\glossary_tooltip\GlossaryHighlighter
     arguments:
       - '@glossary_tooltip.term_provider'
       - '@glossary_tooltip.matcher'
+      - '@glossary_tooltip.element_builder'
       - '@config.factory'
       - '@logger.channel.glossary_tooltip'

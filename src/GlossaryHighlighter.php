@@ -6,21 +6,12 @@ namespace Drupal\glossary_tooltip;
 
 use Drupal\Component\Utility\Html;
 use Drupal\Core\Config\ConfigFactoryInterface;
-use Drupal\Core\StringTranslation\StringTranslationTrait;
-use Drupal\Core\StringTranslation\TranslationInterface;
 use Psr\Log\LoggerInterface;
 
 /**
  * Wraps glossary terms found in HTML with tooltip markup.
  */
 final class GlossaryHighlighter {
-
-  use StringTranslationTrait;
-
-  /**
-   * Maximum length of the description shown in the tooltip.
-   */
-  public const DESCRIPTION_LIMIT = 100;
 
   /**
    * Elements whose text content is never scanned.
@@ -42,14 +33,10 @@ final class GlossaryHighlighter {
   public function __construct(
     private readonly GlossaryTermProvider $termProvider,
     private readonly GlossaryMatcher $matcher,
+    private readonly TooltipElementBuilder $elementBuilder,
     private readonly ConfigFactoryInterface $configFactory,
     private readonly LoggerInterface $logger,
-    ?TranslationInterface $translation = NULL,
-  ) {
-    if ($translation !== NULL) {
-      $this->setStringTranslation($translation);
-    }
-  }
+  ) {}
 
   /**
    * Highlights glossary terms in the given HTML markup.
@@ -75,9 +62,6 @@ final class GlossaryHighlighter {
 
     try {
       $document = Html::load($html);
-      $xpath = new \DOMXPath($document);
-      $text_nodes = iterator_to_array($xpath->query('//text()') ?: []);
-
       $context = HighlightContext::create(
         $terms,
         (bool) $this->configFactory
@@ -86,18 +70,7 @@ final class GlossaryHighlighter {
         $this->matcher,
       );
 
-      foreach ($text_nodes as $text_node) {
-        if (!$text_node instanceof \DOMText || $this->isSkipped($text_node)) {
-          continue;
-        }
-
-        $matches = $this->matcher->findMatches($text_node->nodeValue ?? '', $context->names());
-        if ($matches === []) {
-          continue;
-        }
-
-        $this->wrapMatches($document, $text_node, $matches, $context);
-      }
+      $this->processTextNodes($document, $context);
 
       if ($context->counter() > 0) {
         $result['text'] = Html::serialize($document);
@@ -111,6 +84,26 @@ final class GlossaryHighlighter {
     }
 
     return $result;
+  }
+
+  /**
+   * Scans every text node of the document and wraps found terms.
+   */
+  private function processTextNodes(\DOMDocument $document, HighlightContext $context): void {
+    $xpath = new \DOMXPath($document);
+
+    foreach ($xpath->query('//text()') ?: [] as $text_node) {
+      if (!$text_node instanceof \DOMText || $this->isSkipped($text_node)) {
+        continue;
+      }
+
+      $matches = $this->matcher->findMatches($text_node->nodeValue ?? '', $context->names());
+      if ($matches === []) {
+        continue;
+      }
+
+      $this->wrapMatches($document, $text_node, $matches, $context);
+    }
   }
 
   /**
@@ -163,7 +156,7 @@ final class GlossaryHighlighter {
       }
 
       $parent->insertBefore(
-        $this->buildTermElement($document, $match['text'], $hit['data'], $hit['id'], $context->nextCounter()),
+        $this->elementBuilder->buildElement($document, $match['text'], $hit['data'], $hit['id'], $context->nextCounter()),
         $text_node,
       );
 
@@ -180,57 +173,6 @@ final class GlossaryHighlighter {
     }
 
     $parent->removeChild($text_node);
-  }
-
-  /**
-   * Builds the highlight span with its tooltip.
-   *
-   * @param array{name: string, description: string, url: string} $term
-   *   Term data.
-   */
-  private function buildTermElement(
-    \DOMDocument $document,
-    string $matched_text,
-    array $term,
-    int $term_id,
-    int $counter,
-  ): \DOMElement {
-    $tooltip_id = 'glossary-tooltip-' . $term_id . '-' . $counter;
-
-    $wrapper = $document->createElement('span');
-    $wrapper->setAttribute('class', 'glossary-term');
-    $wrapper->setAttribute('tabindex', '0');
-    $wrapper->setAttribute('aria-expanded', 'false');
-    $wrapper->setAttribute('aria-describedby', $tooltip_id);
-    $wrapper->setAttribute('data-glossary-term', (string) $term_id);
-    $wrapper->appendChild($document->createTextNode($matched_text));
-
-    $tooltip = $document->createElement('span');
-    $tooltip->setAttribute('class', 'glossary-tooltip');
-    $tooltip->setAttribute('id', $tooltip_id);
-    $tooltip->setAttribute('role', 'tooltip');
-
-    $content = $document->createElement('span');
-    $content->setAttribute('class', 'glossary-tooltip__content');
-
-    $description = $term['description'];
-    $is_truncated = mb_strlen($description) > self::DESCRIPTION_LIMIT;
-    if ($is_truncated) {
-      $description = rtrim(mb_strimwidth($description, 0, self::DESCRIPTION_LIMIT, '')) . '…';
-    }
-    $content->appendChild($document->createTextNode($description));
-    $tooltip->appendChild($content);
-
-    if ($is_truncated) {
-      $link = $document->createElement('a', (string) $this->t('Read more'));
-      $link->setAttribute('class', 'glossary-tooltip__link');
-      $link->setAttribute('href', $term['url']);
-      $tooltip->appendChild($link);
-    }
-
-    $wrapper->appendChild($tooltip);
-
-    return $wrapper;
   }
 
 }
