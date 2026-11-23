@@ -74,21 +74,45 @@
    */
   function positionTooltip(term, tooltip) {
     tooltip.classList.remove('glossary-tooltip--above', 'glossary-tooltip--below');
+    tooltip.style.marginLeft = '';
+    tooltip.style.setProperty('--arrow-offset', '0px');
 
     // Make the tooltip measurable without flashing it on screen.
     term.classList.add('is-measuring');
     const termRect = term.getBoundingClientRect();
-    const tooltipHeight = tooltip.getBoundingClientRect().height;
+    const tooltipRect = tooltip.getBoundingClientRect();
     term.classList.remove('is-measuring');
 
     const spaceBelow = window.innerHeight - termRect.bottom;
     const spaceAbove = termRect.top;
-    const needed = tooltipHeight + 12;
+    const needed = tooltipRect.height + 12;
 
     if (spaceBelow >= needed || spaceBelow >= spaceAbove) {
       tooltip.classList.add('glossary-tooltip--below');
     } else {
       tooltip.classList.add('glossary-tooltip--above');
+    }
+
+    // Keep the tooltip inside the surrounding text block (clamped to the
+    // viewport): when it would overflow an edge, shift the box and
+    // counter-shift the arrow so it still points at the term.
+    const margin = 8;
+    const parent = term.parentElement;
+    const parentRect = parent ? parent.getBoundingClientRect() : null;
+
+    const boundLeft = Math.max(margin, parentRect ? parentRect.left : -Infinity);
+    const boundRight = Math.min(
+      window.innerWidth - margin,
+      parentRect ? parentRect.right : Infinity,
+    );
+
+    const shiftRight = Math.max(boundLeft - tooltipRect.left, 0);
+    const shiftLeft = Math.min(boundRight - tooltipRect.right, 0);
+    const offset = shiftRight !== 0 ? shiftRight : shiftLeft;
+
+    if (offset !== 0) {
+      tooltip.style.marginLeft = offset + 'px';
+      tooltip.style.setProperty('--arrow-offset', -offset + 'px');
     }
   }
 })(Drupal, once);

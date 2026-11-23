@@ -6,6 +6,7 @@ namespace Drupal\glossary_tooltip\Plugin\Filter;
 
 use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
+use Drupal\filter\Attribute\Filter;
 use Drupal\filter\FilterProcessResult;
 use Drupal\filter\Plugin\FilterBase;
 use Drupal\filter\Plugin\FilterInterface;

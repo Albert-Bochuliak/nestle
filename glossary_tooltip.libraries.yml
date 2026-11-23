@@ -2,6 +2,7 @@ glossary_tooltip:
   version: 1.x
   css:
     theme:
+      https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500&family=Roboto:wght@400&display=swap: { type: external }
       css/glossary-tooltip.css: {}
   js:
     js/glossary-tooltip.js: { attributes: { defer: true } }

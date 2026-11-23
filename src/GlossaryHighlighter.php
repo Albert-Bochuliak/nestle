@@ -83,7 +83,7 @@ final class GlossaryHighlighter {
       $names = array_column($terms, 'name');
       $lookup = [];
       foreach ($terms as $term_id => $term) {
-        $lookup[mb_strtolower($term['name'])] = $term_id;
+        $lookup[$this->normalizeKey($term['name'])] = $term_id;
       }
 
       $first_only = (bool) $this->configFactory
@@ -141,7 +141,7 @@ final class GlossaryHighlighter {
    * @param array<int, array{name: string, description: string, url: string}> $terms
    *   Term data keyed by term ID.
    * @param array<string, int> $lookup
-   *   Lowercase term name to term ID.
+   *   Normalized term name (see ::normalizeKey()) to term ID.
    * @param array<int, bool> $seen
    *   Term IDs already highlighted (for first-occurrence mode).
    * @param int $counter
@@ -167,11 +167,9 @@ final class GlossaryHighlighter {
     $inserted = FALSE;
 
     foreach ($matches as $match) {
-      $term_id = $lookup[mb_strtolower($match['text'])] ?? NULL;
+      $term_id = $lookup[$this->normalizeKey($match['text'])] ?? NULL;
 
       if ($term_id === NULL) {
-        // Whitespace-flexible matching can differ in case/spacing; fall back
-        // to a name lookup via the raw match.
         continue;
       }
 
@@ -205,6 +203,17 @@ final class GlossaryHighlighter {
     }
 
     $parent->removeChild($text_node);
+  }
+
+  /**
+   * Normalizes a term name or matched text into a lookup key.
+   *
+   * Lowercases the value and collapses whitespace so a multi-word match
+   * like "wet\nfood" still resolves to the "wet food" term.
+   */
+  private function normalizeKey(string $text): string {
+    $text = preg_replace('/\s+/u', ' ', trim($text)) ?? '';
+    return mb_strtolower($text);
   }
 
   /**
@@ -247,7 +256,7 @@ final class GlossaryHighlighter {
     $tooltip->appendChild($content);
 
     if ($is_truncated) {
-      $link = $document->createElement('a', $this->t('Read more'));
+      $link = $document->createElement('a', (string) $this->t('Read more'));
       $link->setAttribute('class', 'glossary-tooltip__link');
       $link->setAttribute('href', $term['url']);
       $tooltip->appendChild($link);
