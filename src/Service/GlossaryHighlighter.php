@@ -53,29 +53,29 @@ final class GlossaryHighlighter {
     $result = [
       'text' => $html,
       'matched' => FALSE,
-      'cacheability' => (new CacheableMetadata())
-        ->merge($this->termProvider->getCacheMetadata())
-        // Filtered output depends on the module settings, so toggling
-        // "first occurrence only" must invalidate the cached markup.
-        ->addCacheTags(['config:glossary_tooltip.settings']),
     ];
 
-    if (trim($html) === '') {
-      return $result;
+    if (trim($html) !== '') {
+      // Throws on load failure: the filter's fail-safe layer handles it.
+      $terms = $this->termProvider->getTerms($langcode);
+      if ($terms !== []) {
+        $context = new HighlightContext($terms, $this->isFirstOccurrenceOnly(), $this->matcher);
+        $processed = $this->domProcessor->process($html, $context);
+
+        if ($processed !== NULL) {
+          $result['text'] = $processed;
+          $result['matched'] = TRUE;
+        }
+      }
     }
 
-    $terms = $this->termProvider->getTerms($langcode);
-    if ($terms === []) {
-      return $result;
-    }
-
-    $context = new HighlightContext($terms, $this->isFirstOccurrenceOnly(), $this->matcher);
-    $processed = $this->domProcessor->process($html, $context);
-
-    if ($processed !== NULL) {
-      $result['text'] = $processed;
-      $result['matched'] = TRUE;
-    }
+    // Built after getTerms() so restored/loaded metadata is complete;
+    // on empty input getCacheMetadata() returns the base metadata without
+    // triggering a load. The settings tag keeps filtered markup in sync
+    // with the "first occurrence only" toggle.
+    $result['cacheability'] = (new CacheableMetadata())
+      ->merge($this->termProvider->getCacheMetadata($langcode))
+      ->addCacheTags(['config:glossary_tooltip.settings']);
 
     return $result;
   }
