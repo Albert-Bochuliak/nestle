@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Drupal\glossary_tooltip\Service;
 
 use Drupal\Component\Utility\Html;
-use Drupal\Core\Access\AccessResultInterface;
 use Drupal\Core\Cache\CacheableMetadata;
 use Drupal\Core\Entity\EntityRepositoryInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
@@ -93,20 +92,25 @@ final class GlossaryTermProvider {
           $term = $this->entityRepository->getTranslationFromContext($term, $langcode);
         }
 
-        $access = $term->access('view', $anonymous);
-        if ($access instanceof AccessResultInterface) {
-          $cacheability->addCacheableDependency($access);
-          $access = $access->isAllowed();
-        }
-        if (!$access || trim($name = $term->getName()) === '') {
+        // TRUE asks for cacheable access results: forbidden verdicts are
+        // bubbled into the metadata exactly like allowed ones.
+        $access = $term->access('view', $anonymous, TRUE);
+        $name_access = $term->get('name')->access('view', $anonymous, TRUE);
+        $cacheability->addCacheableDependency($term)
+          ->addCacheableDependency($access)
+          ->addCacheableDependency($name_access);
+
+        $name = $name_access->isAllowed() ? trim($term->getName()) : '';
+        if (!$access->isAllowed() || $name === '') {
           continue;
         }
 
         // Generated URLs carry cacheability (language, domain) — bubble it.
-        $cacheability->addCacheableDependency($url = $term->toUrl()->toString(TRUE));
+        $url = $term->toUrl()->toString(TRUE);
+        $cacheability->addCacheableDependency($url);
 
         $terms[(int) $term->id()] = [
-          'name' => trim($name),
+          'name' => $name,
           'description' => $this->extractDescription($term, $anonymous, $cacheability),
           'url' => $url->getGeneratedUrl(),
         ];
@@ -121,15 +125,10 @@ final class GlossaryTermProvider {
    */
   private function extractDescription(TermInterface $term, AccountInterface $account, CacheableMetadata $cacheability): string {
     $field = $term->get('description');
-    $access = $field->access('view', $account);
+    $access = $field->access('view', $account, TRUE);
+    $cacheability->addCacheableDependency($access);
 
-    if ($access instanceof AccessResultInterface) {
-      $cacheability->addCacheableDependency($access);
-      if (!$access->isAllowed()) {
-        return '';
-      }
-    }
-    elseif (!$access) {
+    if (!$access->isAllowed()) {
       return '';
     }
 
