@@ -10,10 +10,16 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * Tests the stateless glossary matcher.
+ */
 #[CoversClass(GlossaryMatcher::class)]
 #[Group('glossary_tooltip')]
 final class GlossaryMatcherTest extends TestCase {
 
+  /**
+   * The matcher under test.
+   */
   private GlossaryMatcher $matcher;
 
   /**
@@ -35,12 +41,18 @@ final class GlossaryMatcherTest extends TestCase {
     return $pattern === NULL ? [] : $this->matcher->findMatches($text, $pattern);
   }
 
+  /**
+   * Empty names produce no pattern; empty text produces no matches.
+   */
   public function testEmptyInput(): void {
     $this->assertNull($this->matcher->compile([]));
     $this->assertNull($this->matcher->compile(['', '  ']));
     $this->assertSame([], $this->matcher->findMatches('', '(?i)x'));
   }
 
+  /**
+   * Matched texts are returned in order of appearance.
+   */
   #[DataProvider('matchProvider')]
   public function testMatches(string $text, array $names, array $expected): void {
     $this->assertSame($expected, array_column($this->find($text, $names), 'text'));
@@ -93,6 +105,12 @@ final class GlossaryMatcherTest extends TestCase {
     $this->assertSame($expected, $this->matcher->normalize($input));
   }
 
+  /**
+   * Scenarios for normalize().
+   *
+   * @return array<string, array{string, string}>
+   *   Input text and expected normalized form.
+   */
   public static function normalizeProvider(): array {
     return [
       'multi-space' => ['wet   food', 'wet food'],

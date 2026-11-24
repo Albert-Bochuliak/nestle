@@ -15,10 +15,16 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * Tests the DOM processor end to end.
+ */
 #[CoversClass(GlossaryDomProcessor::class)]
 #[Group('glossary_tooltip')]
 final class GlossaryDomProcessorTest extends TestCase {
 
+  /**
+   * The processor under test.
+   */
   private GlossaryDomProcessor $processor;
 
   /**
@@ -36,14 +42,26 @@ final class GlossaryDomProcessorTest extends TestCase {
   }
 
   /**
+   * Runs the processor with a fresh highlight context.
+   *
+   * @param string $html
+   *   The markup to scan.
    * @param array<int, array{name: string, description: string, url: string}> $terms
    *   Term data keyed by term ID.
+   * @param bool $firstOnly
+   *   Whether only the first occurrence of each term is highlighted.
    */
   private function process(string $html, array $terms, bool $firstOnly = FALSE): ?string {
     $context = new HighlightContext($terms, $firstOnly, new GlossaryMatcher());
     return $this->processor->process($html, $context);
   }
 
+  /**
+   * Shared term fixture: a single-word and a multi-word term.
+   *
+   * @return array<int, array{name: string, description: string, url: string}>
+   *   Term data keyed by term ID.
+   */
   private static function terms(): array {
     return [
       1 => ['name' => 'Food', 'description' => 'Things you eat', 'url' => '/taxonomy/term/1'],
@@ -51,10 +69,16 @@ final class GlossaryDomProcessorTest extends TestCase {
     ];
   }
 
+  /**
+   * Markup without matches is left alone (NULL, not reserialized).
+   */
   public function testReturnsNullWhenNothingMatches(): void {
     $this->assertNull($this->process('<p>No matches here.</p>', self::terms()));
   }
 
+  /**
+   * A match is wrapped in accessible markup, HTML structure preserved.
+   */
   public function testWrapsMatchAndPreservesStructure(): void {
     $html = $this->process('<p>Cats like <strong>wet food</strong> today.</p>', self::terms());
     $this->assertStringContainsString('<strong>', $html);
@@ -76,8 +100,10 @@ final class GlossaryDomProcessorTest extends TestCase {
   }
 
   /**
-   * Tooltip IDs are assigned by JS at init so repeated cached fragments
-   * can never collide — PHP must not emit one.
+   * Server markup contains no tooltip IDs.
+   *
+   * IDs are assigned by JS at init so repeated cached fragments can never
+   * collide — PHP must not emit one.
    */
   public function testNoTooltipIdInServerMarkup(): void {
     $html = $this->process('<p>food</p>', self::terms());
@@ -85,12 +111,18 @@ final class GlossaryDomProcessorTest extends TestCase {
     $this->assertStringNotContainsString('aria-controls', $html);
   }
 
+  /**
+   * When terms overlap, the longest match wins.
+   */
   public function testLongestTermWins(): void {
     $html = $this->process('<p>wet food</p>', self::terms());
     $this->assertStringContainsString('data-glossary-term="2"', $html);
     $this->assertStringNotContainsString('data-glossary-term="1"', $html);
   }
 
+  /**
+   * Term text already inside a link is not wrapped.
+   */
   public function testLinksStayUntouched(): void {
     $html = $this->process('<p><a href="/x">wet food</a> and wet food</p>', self::terms());
     // The linked text keeps the original anchor; only the plain occurrence
@@ -99,27 +131,42 @@ final class GlossaryDomProcessorTest extends TestCase {
     $this->assertStringContainsString('<a href="/x">wet food</a>', $html);
   }
 
+  /**
+   * Term text inside code and script elements is not scanned.
+   */
   public function testScriptAndCodeAreSkipped(): void {
     $html = $this->process('<p><code>wet food</code><script>var x = "wet food";</script></p>', self::terms());
     $this->assertNull($html);
   }
 
+  /**
+   * Re-processing already wrapped markup is idempotent.
+   */
   public function testAlreadyProcessedTermNotWrappedAgain(): void {
     $once = $this->process('<p>wet food</p>', self::terms());
     $this->assertNotNull($once);
     $this->assertNull($this->process($once, self::terms()));
   }
 
+  /**
+   * First-occurrence mode wraps each term once per field.
+   */
   public function testFirstOccurrenceOnly(): void {
     $html = $this->process('<p>food, food, food</p>', self::terms(), TRUE);
     $this->assertSame(1, substr_count($html, 'data-glossary-term="'));
   }
 
+  /**
+   * Every-occurrence mode wraps all matches of a term.
+   */
   public function testEveryOccurrence(): void {
     $html = $this->process('<p>food, food, food</p>', self::terms(), FALSE);
     $this->assertSame(3, substr_count($html, 'data-glossary-term="'));
   }
 
+  /**
+   * Non-Latin (Cyrillic) terms are matched.
+   */
   public function testNonLatinTerm(): void {
     $html = $this->process('<p>це здоровʼя дуже важливо</p>', [
       5 => ['name' => "здоровʼя", 'description' => 'Опис', 'url' => '/t/5'],
@@ -127,6 +174,9 @@ final class GlossaryDomProcessorTest extends TestCase {
     $this->assertStringContainsString('data-glossary-term="5"', $html);
   }
 
+  /**
+   * The Read more link appears only for truncated descriptions.
+   */
   #[DataProvider('descriptionProvider')]
   public function testDescriptionHandling(string $description, bool $expectLink): void {
     $html = $this->process('<p>food</p>', [
@@ -137,6 +187,12 @@ final class GlossaryDomProcessorTest extends TestCase {
     $this->assertSame($expectLink, str_contains($html, 'href="/taxonomy/term/1"'));
   }
 
+  /**
+   * Scenarios for the description link.
+   *
+   * @return array<string, array{string, bool}>
+   *   Description input and whether a link is expected.
+   */
   public static function descriptionProvider(): array {
     return [
       'short description, no link' => ['Short text', FALSE],

@@ -37,7 +37,7 @@ final class GlossaryMatcher {
    *   strategy can be added here without changing callers.
    */
   public function compile(array $names): ?string {
-    $names = array_values(array_unique(array_filter(array_map('trim', $names), 'strlen')));
+    $names = array_values(array_unique(array_filter(array_map('trim', $names), static fn(string $name): bool => $name !== '')));
 
     if ($names === []) {
       return NULL;

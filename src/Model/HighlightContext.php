@@ -32,6 +32,8 @@ final class HighlightContext {
   private array $index = [];
 
   /**
+   * Builds the normalized term index for one highlighting run.
+   *
    * @param array<int, array{name: string, description: string, url: string}> $terms
    *   Term data keyed by term ID.
    * @param bool $firstOnly

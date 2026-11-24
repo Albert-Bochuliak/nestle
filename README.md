@@ -89,7 +89,8 @@ phpunit modules/custom/glossary_tooltip/tests/src/Unit
 
 38 unit tests, 60 assertions (matcher, DOM processor, run context).
 
-Optional static analysis (requires `drupal/coder` and `phpstan`):
+Code style and static analysis (with `drupal/coder`, `phpstan` and
+`mglaman/phpstan-drupal` installed):
 
 ```
 vendor/bin/phpcs --standard=Drupal,DrupalPractice modules/custom/glossary_tooltip

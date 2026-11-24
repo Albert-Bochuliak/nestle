@@ -34,6 +34,8 @@ final class TooltipElementBuilder {
   /**
    * Builds the highlight span with its tooltip.
    *
+   * @param \DOMDocument $document
+   *   The document the element is built for.
    * @param string $matchedText
    *   The matched term text as it appears in the content.
    * @param array{id: int, name: string, description: string, url: string} $term
@@ -66,6 +68,8 @@ final class TooltipElementBuilder {
   /**
    * Builds the tooltip element with description and optional link.
    *
+   * @param \DOMDocument $document
+   *   The document the element is built for.
    * @param array{id: int, name: string, description: string, url: string} $term
    *   Term data, including the term ID.
    */

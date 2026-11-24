@@ -94,8 +94,14 @@ final class GlossaryDomProcessor {
   /**
    * Replaces a text node with plain text and highlighted term spans.
    *
+   * @param \DOMDocument $document
+   *   The document owning the text node.
+   * @param \DOMText $text_node
+   *   The text node containing the matches.
    * @param array<int, array{offset: int, length: int, text: string}> $matches
    *   Matches inside the text node.
+   * @param \Drupal\glossary_tooltip\Model\HighlightContext $context
+   *   Highlighting run state.
    *
    * @return bool
    *   Whether the node was rewritten. When every match is skipped (for
