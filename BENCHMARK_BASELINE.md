@@ -105,3 +105,28 @@ Even without recursion, `loadMultiple()` of 5 000 terms approaches the 256M ceil
 5. **Provider at scale** — after fixes, watch `loadMultiple` memory and per-term `toUrl()`/access cost.
 
 No optimization implemented at this stage — measurements only.
+
+## Post-fix re-run (recursion removed, raw `value` extraction)
+
+Same harness after replacing `$field->processed` with raw `getValue()` +
+`htmlToPlainText()` in `GlossaryTermProvider::extractDescription()`.
+
+| Metric | 100 before → after | 1 000 before → after | 5 000 before → after |
+|---|---|---|---|
+| Provider warm p50 | 10.4 → 14.1 ms | 591 → 295 ms | OOM@4G → **3 092 ms** |
+| Provider queries | 2 → 2 | 15 → 15 (entity load) | — → 55 |
+| Desc. processing est | 0.3 → ~3 ms | 45.6 → 40.1 ms | — → 31.6 ms |
+| Terms peak mem | 23.5 → 26.7 MB | 74.2 → 73.6 MB | OOM → 182 MB |
+| HTTP warm p50 | 52.9 → 57.4 ms | **6 110 → 58.4 ms** | — → 54.5 ms |
+| HTTP cold | ~1.0 s → ~1.0 s | ~6.6 s → ~1.0 s | — → ~4.1 s |
+
+10 000-tier (extra): provider cold 13.8 s / warm 9.7 s, 105 queries, peak
+324 MB — completes instead of OOM@4G; residual cost is pure entity loading.
+
+- Recursion gone: the 5k/10k tiers that previously died now complete;
+  HTTP warm at 1 000 dropped ~100x (every request used to pay ~11 nested
+  `getTerms()` cycles through the 11 `basic_html`-described terms).
+- The PCRE alternation limit (Finding 1) is untouched — regex still fails
+  above ~2 333 alternatives; fail-safe keeps pages servable and cached.
+- Remaining provider cost at 5k/10k is `loadMultiple()` field-table
+  queries, not the fixed bug — a separate scaling concern.
