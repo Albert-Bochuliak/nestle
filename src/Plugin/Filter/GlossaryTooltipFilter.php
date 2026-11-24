@@ -10,7 +10,7 @@ use Drupal\filter\Attribute\Filter;
 use Drupal\filter\FilterProcessResult;
 use Drupal\filter\Plugin\FilterBase;
 use Drupal\filter\Plugin\FilterInterface;
-use Drupal\glossary_tooltip\GlossaryHighlighter;
+use Drupal\glossary_tooltip\Service\GlossaryHighlighter;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
@@ -66,7 +66,12 @@ final class GlossaryTooltipFilter extends FilterBase implements ContainerFactory
       $highlighted = $this->highlighter->highlight((string) $text);
 
       $result->setProcessedText($highlighted['text']);
-      $result->addCacheTags($highlighted['cache_tags']);
+      // Filtered output also depends on the module settings: toggling
+      // "first occurrence only" must invalidate the cached markup.
+      $result->addCacheTags(array_merge(
+        $highlighted['cache_tags'],
+        ['config:glossary_tooltip.settings'],
+      ));
 
       if ($highlighted['matched']) {
         $result->addAttachments([

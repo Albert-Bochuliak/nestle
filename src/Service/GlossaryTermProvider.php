@@ -2,15 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Drupal\glossary_tooltip;
+namespace Drupal\glossary_tooltip\Service;
 
 use Drupal\Core\Cache\Cache;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\taxonomy\TermInterface;
 use Psr\Log\LoggerInterface;
 
 /**
  * Loads and caches published terms of the glossary vocabulary.
+ *
+ * Two cache levels: a per-request memoization and the Drupal cache backend
+ * tagged with the vocabulary list cache tag, so term edits, unpublishing
+ * and deletions invalidate it automatically.
+ *
+ * The term query skips access checks deliberately: term data is identical
+ * for every viewer, so a shared cache entry cannot leak per-user results
+ * and the query cannot depend on the current user's permissions.
  */
 final class GlossaryTermProvider {
 
@@ -37,7 +46,22 @@ final class GlossaryTermProvider {
    *   Term data keyed by term ID.
    */
   public function getTerms(): array {
-    return $this->terms ??= $this->readCache() ?? $this->loadAndCache();
+    return $this->terms ??= $this->readCache() ?? $this->loadAndCache() ?? [];
+  }
+
+  /**
+   * Cache tags that keep filtered text in sync with term edits.
+   *
+   * The bundle-level list tag is invalidated by core whenever a term of
+   * this vocabulary is saved, unpublished or deleted, which rebuilds both
+   * this cache and the filtered markup — without touching other
+   * vocabularies or requiring a manual cache clear.
+   *
+   * @return string[]
+   *   Cache tags.
+   */
+  public function getCacheTags(): array {
+    return ['taxonomy_term_list:' . self::VOCABULARY];
   }
 
   /**
@@ -65,11 +89,19 @@ final class GlossaryTermProvider {
   /**
    * Loads terms from storage and stores them in the cache.
    *
-   * @return array<int, array{name: string, description: string, url: string}>
-   *   Term data keyed by term ID.
+   * @return array<int, array{name: string, description: string, url: string}>|null
+   *   Term data, or NULL when loading failed; failures are never cached.
    */
-  private function loadAndCache(): array {
-    $terms = $this->loadTerms();
+  private function loadAndCache(): ?array {
+    try {
+      $terms = $this->loadTerms();
+    }
+    catch (\Throwable $exception) {
+      $this->logger->error('Failed to load glossary terms: @message', [
+        '@message' => $exception->getMessage(),
+      ]);
+      return NULL;
+    }
 
     try {
       $this->cache->set(self::CACHE_ID, $terms, Cache::PERMANENT, $this->getCacheTags());
@@ -84,81 +116,46 @@ final class GlossaryTermProvider {
   }
 
   /**
-   * Cache tags that keep filtered text in sync with term edits.
-   *
-   * The entity list tag is invalidated on every term save, unpublish or
-   * delete, which rebuilds both this cache and the filtered markup —
-   * without a manual cache clear.
-   *
-   * @return string[]
-   *   Cache tags.
-   */
-  public function getCacheTags(): array {
-    return ['taxonomy_term_list'];
-  }
-
-  /**
    * Loads published terms from the glossary vocabulary.
    *
    * @return array<int, array{name: string, description: string, url: string}>
    *   Term data keyed by term ID.
    */
   private function loadTerms(): array {
-    try {
-      $storage = $this->entityTypeManager->getStorage('taxonomy_term');
-      $term_ids = $storage->getQuery()
-        ->accessCheck(TRUE)
-        ->condition('vid', self::VOCABULARY)
-        ->condition('status', 1)
-        ->sort('weight')
-        ->execute();
+    $storage = $this->entityTypeManager->getStorage('taxonomy_term');
+    $term_ids = $storage->getQuery()
+      ->accessCheck(FALSE)
+      ->condition('vid', self::VOCABULARY)
+      ->condition('status', 1)
+      ->sort('weight')
+      ->execute();
 
-      if (empty($term_ids)) {
-        return [];
-      }
+    if (empty($term_ids)) {
+      return [];
+    }
 
-      $terms = [];
-      foreach ($storage->loadMultiple($term_ids) as $term) {
-        $name = trim((string) $term->getName());
-        if ($name === '') {
-          continue;
-        }
-
+    // loadMultiple() fetches all terms in one batch — no N+1 queries.
+    $terms = [];
+    foreach ($storage->loadMultiple($term_ids) as $term) {
+      $name = trim($term->getName());
+      if ($name !== '') {
         $terms[(int) $term->id()] = [
           'name' => $name,
           'description' => $this->extractDescription($term),
           'url' => $term->toUrl()->toString(),
         ];
       }
+    }
 
-      return $terms;
-    }
-    catch (\Throwable $exception) {
-      $this->logger->error('Failed to load glossary terms: @message', [
-        '@message' => $exception->getMessage(),
-      ]);
-      return [];
-    }
+    return $terms;
   }
 
   /**
    * Extracts the term description as plain text.
    */
-  private function extractDescription(object $term): string {
-    try {
-      if (method_exists($term, 'hasField') && $term->hasField('description')) {
-        $field = $term->get('description');
-        $text = (string) ($field->processed ?? $field->value ?? '');
-        return trim((string) strip_tags($text));
-      }
-    }
-    catch (\Throwable $exception) {
-      $this->logger->warning('Could not read a term description: @message', [
-        '@message' => $exception->getMessage(),
-      ]);
-    }
-
-    return '';
+  private function extractDescription(TermInterface $term): string {
+    $field = $term->get('description');
+    return trim(strip_tags((string) ($field->processed ?? $field->value ?? '')));
   }
 
 }

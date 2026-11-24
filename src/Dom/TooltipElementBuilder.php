@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Drupal\glossary_tooltip;
+namespace Drupal\glossary_tooltip\Dom;
 
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\Core\StringTranslation\TranslationInterface;
@@ -16,6 +16,9 @@ final class TooltipElementBuilder {
 
   /**
    * Maximum length of the description shown in the tooltip.
+   *
+   * The limit includes the ellipsis: truncated text is cut to LIMIT - 1
+   * characters so text plus "…" never exceeds the limit.
    */
   public const DESCRIPTION_LIMIT = 100;
 
@@ -26,29 +29,34 @@ final class TooltipElementBuilder {
   /**
    * Builds the highlight span with its tooltip.
    *
+   * The tooltip uses a disclosure pattern: the term is focusable and exposes
+   * state through aria-expanded, while aria-details points at the tooltip.
+   * aria-details (rather than aria-describedby) is used because the tooltip
+   * contains an interactive "Read more" link, which plain tooltips forbid.
+   *
+   * The tooltip ID contains uniqid(), so identical terms in separately
+   * cached fragments on the same page never produce duplicate HTML IDs.
+   *
    * @param string $matchedText
    *   The matched term text as it appears in the content.
    * @param array{name: string, description: string, url: string} $term
    *   Term data.
    * @param int $termId
    *   The term ID.
-   * @param int $counter
-   *   Ordinal number of this tooltip; used for unique element IDs.
    */
   public function buildElement(
     \DOMDocument $document,
     string $matchedText,
     array $term,
     int $termId,
-    int $counter,
   ): \DOMElement {
-    $tooltip_id = 'glossary-tooltip-' . $termId . '-' . $counter;
+    $tooltip_id = sprintf('glossary-tooltip-%d-%s', $termId, uniqid());
 
     $wrapper = $document->createElement('span');
     $wrapper->setAttribute('class', 'glossary-term');
     $wrapper->setAttribute('tabindex', '0');
     $wrapper->setAttribute('aria-expanded', 'false');
-    $wrapper->setAttribute('aria-describedby', $tooltip_id);
+    $wrapper->setAttribute('aria-details', $tooltip_id);
     $wrapper->setAttribute('data-glossary-term', (string) $termId);
     $wrapper->appendChild($document->createTextNode($matchedText));
 
@@ -69,11 +77,16 @@ final class TooltipElementBuilder {
     $tooltip->setAttribute('id', $tooltip_id);
     $tooltip->setAttribute('role', 'tooltip');
 
-    [$description, $is_truncated] = $this->truncateDescription($term['description']);
+    $description = $term['description'];
+    $is_truncated = mb_strlen($description) > self::DESCRIPTION_LIMIT;
 
     $content = $document->createElement('span');
     $content->setAttribute('class', 'glossary-tooltip__content');
-    $content->appendChild($document->createTextNode($description));
+    $content->appendChild($document->createTextNode(
+      $is_truncated
+        ? rtrim(mb_substr($description, 0, self::DESCRIPTION_LIMIT - 1)) . '…'
+        : $description,
+    ));
     $tooltip->appendChild($content);
 
     if ($is_truncated) {
@@ -84,20 +97,6 @@ final class TooltipElementBuilder {
     }
 
     return $tooltip;
-  }
-
-  /**
-   * Truncates a description to DESCRIPTION_LIMIT characters.
-   *
-   * @return array{0: string, 1: bool}
-   *   The (possibly truncated) description and whether truncation happened.
-   */
-  private function truncateDescription(string $description): array {
-    if (mb_strlen($description) <= self::DESCRIPTION_LIMIT) {
-      return [$description, FALSE];
-    }
-
-    return [rtrim(mb_strimwidth($description, 0, self::DESCRIPTION_LIMIT, '')) . '…', TRUE];
   }
 
 }
