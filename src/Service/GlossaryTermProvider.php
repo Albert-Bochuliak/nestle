@@ -130,6 +130,12 @@ final class GlossaryTermProvider {
 
   /**
    * Extracts the description as plain text, or '' when not viewable.
+   *
+   * The raw field value is used deliberately, never ::$processed:
+   * rendering the processed text runs the format's filters, and a format
+   * with glossary_tooltip enabled would re-enter this provider
+   * recursively. Plain text is all the tooltip needs, so the raw value is
+   * flattened locally instead.
    */
   private function extractDescription(TermInterface $term, AccountInterface $account, CacheableMetadata $cacheability): string {
     $field = $term->get('description');

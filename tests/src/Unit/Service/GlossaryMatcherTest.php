@@ -219,6 +219,23 @@ final class GlossaryMatcherTest extends TestCase {
   }
 
   /**
+   * A single term over the size limit keeps the consuming-pattern contract.
+   */
+  public function testSingleOversizedTermStaysConsuming(): void {
+    // One alternative exceeding MAX_PATTERN_BYTES cannot be chunked into
+    // smaller pieces; it must stay a consuming pattern so a single-element
+    // list is never misread as a lookahead one.
+    $name = str_repeat('verylongword', 1500);
+    $patterns = $this->matcher->compile([$name]);
+    $this->assertNotNull($patterns);
+    $this->assertCount(1, $patterns);
+
+    $text = "x {$name} y";
+    $matches = $this->matcher->findMatches($text, $patterns);
+    $this->assertSame([['offset' => 2, 'length' => strlen($name), 'text' => $name]], $matches);
+  }
+
+  /**
    * Byte offsets stay substr()-consistent in chunked mode with Unicode.
    */
   public function testChunkedUnicodeByteOffsets(): void {

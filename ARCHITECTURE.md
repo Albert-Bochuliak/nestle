@@ -87,6 +87,11 @@ cache bin: loaded terms are already served by Drupal's entity cache.
 - Access: `$term->access('view', $anonymous)` and field-level
   `description` access as cacheable access results, so only publicly
   viewable data is highlighted and the verdicts' cacheability is bubbled.
+- `extractDescription()` — reads the raw `description` value, never
+  `::processed`: rendering it would run the format's filters and a format
+  containing glossary_tooltip would re-enter the provider recursively.
+  The raw markup is flattened locally (script/style removed, block
+  boundaries become spaces, entities decoded, whitespace collapsed).
 - `cacheability` — `taxonomy_term_list:glossary` tag +
   `languages:language_content` context + generated-URL metadata.
 
@@ -94,16 +99,22 @@ cache bin: loaded terms are already served by Drupal's entity cache.
 
 Stateless pure-PHP matcher — no Drupal dependencies, unit-testable.
 
-- `compile(array $names): ?string` — builds the alternation pattern once
-  per run: deduplicated, longest-first (so `Wet food` beats `Food`),
-  inner whitespace becomes `\s+`, wrapped in Unicode word boundaries
+- `compile(array $names): ?array` — builds ready-to-run patterns once per
+  run: deduplicated, longest-first (so `Wet food` beats `Food`), inner
+  whitespace becomes `\s+`, wrapped in Unicode word boundaries
   `(?<![\p{L}\p{N}_]) ... (?![\p{L}\p{N}_])` with `/iu`. Returns NULL for
-  empty input. Documented scaling note: extreme term counts may need
-  chunking — a local change that does not affect callers.
-- `findMatches(string $text, string $pattern): array` — `preg_match_all`
-  with `PREG_OFFSET_CAPTURE`; returns byte `offset`/`length`/`text`
-  consistent with `substr()`. A pattern failure throws `RuntimeException`,
-  distinguishing errors from "no matches".
+  empty input. Contract: a single-element list is a consuming pattern; a
+  multi-element list contains zero-width lookahead chunk patterns. Chunk
+  bounds (<= 1 500 alternatives, <= 16 KB per pattern) are conservative
+  empirical values below the measured ~2 333-alt / ~31 KB PCRE failure —
+  not universal guarantees.
+- `findMatches(string $text, array $patterns): array` — a single pattern
+  goes straight through `preg_match_all` with `PREG_OFFSET_CAPTURE`;
+  multiple lookahead patterns yield per-position candidates merged by a
+  leftmost-longest greedy pass, reproducing exact single-pattern
+  semantics. Returns byte `offset`/`length`/`text` consistent with
+  `substr()`. A pattern failure throws `RuntimeException`, distinguishing
+  errors from "no matches".
 - `normalize(string $text): string` — trim, collapse Unicode whitespace,
   lowercase; used for both names and matches so `wet\nfood` resolves to
   `wet food`.

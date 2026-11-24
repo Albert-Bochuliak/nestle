@@ -25,14 +25,18 @@ final class GlossaryMatcher {
    * Maximum alternatives per compiled pattern.
    *
    * A single alternation matching thousands of terms exhausts PCRE
-   * internals (preg_match_all() fails with PREG_INTERNAL_ERROR around
-   * ~2 300 alternatives / ~31 KB on typical builds). Both bounds are kept
-   * well below the observed failure point.
+   * internals (preg_match_all() failed with PREG_INTERNAL_ERROR around
+   * ~2 300 alternatives / ~31 KB on the measured PHP 8.5 build). These
+   * bounds are conservative empirical values with deliberate headroom —
+   * not universal PCRE guarantees: the real limit varies with the PCRE
+   * version, build flags and alternative complexity.
    */
   private const MAX_ALTERNATIVES = 1500;
 
   /**
    * Maximum length of a compiled pattern body in bytes.
+   *
+   * Conservative empirical bound; see MAX_ALTERNATIVES.
    */
   private const MAX_PATTERN_BYTES = 16384;
 
@@ -102,7 +106,13 @@ final class GlossaryMatcher {
     }
     $patterns[] = $this->buildPattern($chunk, TRUE);
 
-    return $patterns;
+    // One chunk means a single alternative exceeded the limits by itself:
+    // emit the consuming form so a single-element list always honours the
+    // "consuming pattern" contract. If PCRE cannot handle it, findMatches()
+    // fails loudly, exactly as a single oversized pattern did before.
+    return count($patterns) === 1
+      ? [$this->buildPattern($alternatives, FALSE)]
+      : $patterns;
   }
 
   /**
@@ -140,7 +150,9 @@ final class GlossaryMatcher {
     // global resolution may still need.
     $candidates = [];
     foreach ($patterns as $pattern) {
-      $candidates = [...$candidates, ...$this->runPattern($text, $pattern, TRUE)];
+      foreach ($this->runPattern($text, $pattern, TRUE) as $candidate) {
+        $candidates[] = $candidate;
+      }
     }
     if ($candidates === []) {
       return [];
