@@ -75,7 +75,8 @@ Pipeline coordinator; contains no regex or DOM logic.
 
 ### `GlossaryTermProvider` — `src/Service/GlossaryTermProvider.php`
 
-Term source with two-level caching (request memoization + cache bin).
+Term source; results are memoized per request and language. No dedicated
+cache bin: loaded terms are already served by Drupal's entity cache.
 
 - `getTerms(?string $langcode): array` — single contract returning
   `{terms, cacheability}`; memoized per request and language. One entity

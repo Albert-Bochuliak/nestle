@@ -21,6 +21,11 @@ vocabulary and shows their descriptions in a tooltip.
 - Optional setting to highlight only the **first occurrence** of each
   term or **every occurrence**.
 
+## Requirements
+
+- Drupal 11
+- Core Taxonomy and Filter modules
+
 ## Installation
 
 1. Copy the module to `modules/custom/glossary_tooltip`.
@@ -36,21 +41,57 @@ highlighting the first occurrence of each term or every occurrence.
 
 ## How it works
 
-- `GlossaryTermProvider` loads published `glossary` terms and caches them
-  with the `taxonomy_term_list` cache tag.
+- `GlossaryTermProvider` loads published `glossary` terms in one entity
+  query + one `loadMultiple()` batch, memoized per request. Access is
+  checked against the anonymous user on the entity and the `name` /
+  `description` fields via cacheable access results — only publicly
+  viewable terms are highlighted.
 - `GlossaryTooltipFilter` (a text filter) runs the highlighter over
   filtered markup and attaches the tooltip library only when a term
-  matches. Its cache metadata includes the term list tag, so term
-  changes show up immediately.
-- `GlossaryHighlighter` walks the DOM with `DOMDocument`, skipping links
-  and non-content elements, and delegates matching to `GlossaryMatcher`.
-- `GlossaryMatcher` is a dependency-free Unicode-safe matcher:
-  case-insensitive, word-boundary aware, longest-match-first.
+  matches. It is the single fail-safe layer: load failures are logged
+  and render with `max-age 0`.
+- `GlossaryHighlighter` coordinates the pipeline; `GlossaryDomProcessor`
+  walks `DOMDocument` text nodes skipping links and non-content
+  elements; `GlossaryMatcher` is a dependency-free Unicode-safe matcher
+  (case-insensitive, word-boundary aware, longest-match-first);
+  `TooltipElementBuilder` owns the accessible disclosure markup.
 - `js/glossary-tooltip.js` positions the tooltip above or below the term
   and supports hover, keyboard focus, Escape and touch taps.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full per-class and
+per-function reference (backend and frontend).
+
+## Caching
+
+Filtered output carries cache tags `taxonomy_term_list:glossary`,
+per-term `taxonomy_term:N` tags and `config:glossary_tooltip.settings`,
+plus `languages:language_content` and `user.permissions` contexts — so
+term edits, unpublishing, new terms and settings changes take effect
+without a cache clear.
+
+## Accessibility
+
+Native `<button>` trigger with `aria-expanded` / `aria-controls`; Tab
+opens, Escape closes and restores focus, "Read more" is a plain link;
+tap toggles on touch.
+
+## Known limitations
+
+- A multi-word term split by inline markup (`wet <em>food</em>`) is not
+  matched — matching happens per text node.
+- Only published terms viewable by anonymous users are highlighted.
 
 ## Tests
 
 ```
 phpunit modules/custom/glossary_tooltip/tests/src/Unit
+```
+
+38 unit tests, 60 assertions (matcher, DOM processor, run context).
+
+Optional static analysis (requires `drupal/coder` and `phpstan`):
+
+```
+vendor/bin/phpcs --standard=Drupal,DrupalPractice modules/custom/glossary_tooltip
+vendor/bin/phpstan analyse modules/custom/glossary_tooltip
 ```
