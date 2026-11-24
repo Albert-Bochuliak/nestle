@@ -15,9 +15,6 @@ final class GlossaryMatcher {
 
   /**
    * Characters considered part of a word for boundary checks.
-   */
-  /**
-   * Characters considered part of a word for boundary checks.
    *
    * \p{M} covers combining marks so accented and decomposed characters
    * still count as word characters.
@@ -40,12 +37,7 @@ final class GlossaryMatcher {
    *   strategy can be added here without changing callers.
    */
   public function compile(array $names): ?string {
-    // (string) cast: numeric term names arrive as integers because PHP
-    // converts numeric array keys.
-    $names = array_values(array_unique(array_filter(
-      array_map(static fn($name): string => trim((string) $name), $names),
-      'strlen',
-    )));
+    $names = array_values(array_unique(array_filter(array_map('trim', $names), 'strlen')));
 
     if ($names === []) {
       return NULL;

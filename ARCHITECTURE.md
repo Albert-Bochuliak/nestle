@@ -68,30 +68,26 @@ formats such as Basic HTML and Full HTML.
 Pipeline coordinator; contains no regex or DOM logic.
 
 - `highlight(string $html, ?string $langcode): array` — returns
-  `{text, matched, cacheability}`. Short-circuits on empty input before
-  loading terms. Exceptions propagate to the filter's fail-safe layer.
+  `{text, matched, cacheability}`; metadata merges the provider entry
+  with the settings tag. Short-circuits on empty input before loading
+  terms. Exceptions propagate to the filter's fail-safe layer.
 - `isFirstOccurrenceOnly(): bool` — reads the module setting.
 
 ### `GlossaryTermProvider` — `src/Service/GlossaryTermProvider.php`
 
 Term source with two-level caching (request memoization + cache bin).
 
-- `getTerms(?string $langcode): array` — `{id: {name, description, url}}`;
-  per-language request memo → per-language cache CID → storage. Failed
-  loads return `[]` without being memoized or cached.
-- `getCacheMetadata(): CacheableMetadata` — tags
-  (`taxonomy_term_list:glossary`), contexts
-  (`languages:language_content`) and generated-URL cacheability bubbled
-  during `loadTerms()`.
-- `readCache()/loadAndCache()/loadTerms()` — one entity query
-  (`accessCheck(FALSE)` because access is checked explicitly against the
-  anonymous user below), sorted by weight then tid for deterministic
-  order, plus one `loadMultiple()` batch — no N+1 queries.
-- Access: each term passes `$term->access('view', $anonymous)` so the
-  shared cache never mixes per-user results; translated terms are fetched
-  via `entity.repository::getTranslationFromContext()`.
-- `extractDescription(TermInterface): string` — `processed ?? value`,
-  `strip_tags`, `Html::decodeEntities`, trim.
+- `getTerms(?string $langcode): array` — single contract returning
+  `{terms, cacheability}`; memoized per request and language. One entity
+  query (`accessCheck(FALSE)` because access is checked explicitly below)
+  sorted by weight then tid for deterministic order, plus one
+  `loadMultiple()` batch — no N+1 queries and no dedicated cache bin:
+  Drupal's entity cache already covers loaded terms.
+- Access: `$term->access('view', $anonymous)` and field-level
+  `description` access as cacheable access results, so only publicly
+  viewable data is highlighted and the verdicts' cacheability is bubbled.
+- `cacheability` — `taxonomy_term_list:glossary` tag +
+  `languages:language_content` context + generated-URL metadata.
 
 ### `GlossaryMatcher` — `src/Service/GlossaryMatcher.php`
 

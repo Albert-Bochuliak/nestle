@@ -8,8 +8,6 @@ services:
     arguments:
       - '@entity_type.manager'
       - '@entity.repository'
-      - '@cache.discovery'
-      - '@logger.channel.glossary_tooltip'
 
   glossary_tooltip.matcher:
     class: Drupal\glossary_tooltip\Service\GlossaryMatcher

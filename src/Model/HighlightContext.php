@@ -53,10 +53,10 @@ final class HighlightContext {
    * Normalized term names for the matcher pattern.
    *
    * @return string[]
-   *   Term names.
+   *   Term names (strval: numeric names become integer array keys).
    */
   public function names(): array {
-    return array_keys($this->index);
+    return array_map('strval', array_keys($this->index));
   }
 
   /**

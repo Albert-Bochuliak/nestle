@@ -53,29 +53,31 @@ final class GlossaryHighlighter {
     $result = [
       'text' => $html,
       'matched' => FALSE,
+      // The settings tag keeps filtered markup in sync with the "first
+      // occurrence only" toggle.
+      'cacheability' => (new CacheableMetadata())
+        ->addCacheTags(['config:glossary_tooltip.settings']),
     ];
 
-    if (trim($html) !== '') {
-      // Throws on load failure: the filter's fail-safe layer handles it.
-      $terms = $this->termProvider->getTerms($langcode);
-      if ($terms !== []) {
-        $context = new HighlightContext($terms, $this->isFirstOccurrenceOnly(), $this->matcher);
-        $processed = $this->domProcessor->process($html, $context);
-
-        if ($processed !== NULL) {
-          $result['text'] = $processed;
-          $result['matched'] = TRUE;
-        }
-      }
+    if (trim($html) === '') {
+      return $result;
     }
 
-    // Built after getTerms() so restored/loaded metadata is complete;
-    // on empty input getCacheMetadata() returns the base metadata without
-    // triggering a load. The settings tag keeps filtered markup in sync
-    // with the "first occurrence only" toggle.
-    $result['cacheability'] = (new CacheableMetadata())
-      ->merge($this->termProvider->getCacheMetadata($langcode))
-      ->addCacheTags(['config:glossary_tooltip.settings']);
+    // Throws on load failure: the filter's fail-safe layer handles it.
+    $entry = $this->termProvider->getTerms($langcode);
+    $result['cacheability'] = $result['cacheability']->merge($entry['cacheability']);
+
+    if ($entry['terms'] === []) {
+      return $result;
+    }
+
+    $context = new HighlightContext($entry['terms'], $this->isFirstOccurrenceOnly(), $this->matcher);
+    $processed = $this->domProcessor->process($html, $context);
+
+    if ($processed !== NULL) {
+      $result['text'] = $processed;
+      $result['matched'] = TRUE;
+    }
 
     return $result;
   }
