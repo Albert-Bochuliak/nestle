@@ -6,7 +6,16 @@
 .glossary-term {
   position: relative;
   display: inline-block;
+}
+
+/* Native button trigger, styled like the highlighted term. */
+.glossary-term__trigger {
+  padding: 0 1px;
+  border: none;
+  border-radius: 0;
   background: rgba(13, 121, 120, 0.1);
+  color: inherit;
+  font: inherit;
   text-decoration: underline;
   text-decoration-style: solid;
   text-decoration-color: #0d7978;
@@ -15,7 +24,7 @@
   cursor: help;
 }
 
-.glossary-term:focus-visible {
+.glossary-term__trigger:focus-visible {
   outline: 3px solid #0d7978;
   outline-offset: 2px;
 }

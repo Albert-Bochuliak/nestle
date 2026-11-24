@@ -62,7 +62,9 @@ final class GlossaryDomProcessor {
     $xpath = new \DOMXPath($document);
     $changed = FALSE;
 
-    foreach ($xpath->query('//text()') ?: [] as $text_node) {
+    // Snapshot: DOMNodeList is live and would skip/revisit nodes while
+    // wrapMatches() modifies the document.
+    foreach (iterator_to_array($xpath->query('//text()') ?: []) as $text_node) {
       if (!$text_node instanceof \DOMText || $this->isSkipped($text_node)) {
         continue;
       }
@@ -128,7 +130,7 @@ final class GlossaryDomProcessor {
       }
 
       $parent->insertBefore(
-        $this->elementBuilder->buildElement($document, $match['text'], $term, $term['id']),
+        $this->elementBuilder->buildElement($document, $match['text'], $term),
         $text_node,
       );
 

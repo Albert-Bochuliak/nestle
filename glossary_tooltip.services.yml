@@ -7,6 +7,7 @@ services:
     class: Drupal\glossary_tooltip\Service\GlossaryTermProvider
     arguments:
       - '@entity_type.manager'
+      - '@entity.repository'
       - '@cache.discovery'
       - '@logger.channel.glossary_tooltip'
 
@@ -31,4 +32,3 @@ services:
       - '@glossary_tooltip.matcher'
       - '@glossary_tooltip.dom_processor'
       - '@config.factory'
-      - '@logger.channel.glossary_tooltip'

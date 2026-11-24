@@ -5,11 +5,14 @@
 (function (Drupal, once) {
   'use strict';
 
-  // The currently open term: { term, hide } or null. A single pair of
+  // The currently open term: { trigger, hide } or null. A single pair of
   // delegated document listeners handles Escape and outside clicks for
   // all terms instead of registering listeners per term.
   let openTerm = null;
   let globalBound = false;
+  // Unique tooltip IDs are assigned at init so repeated cached fragments
+  // and AJAX-inserted content can never produce duplicate HTML IDs.
+  let nextTooltipId = 0;
 
   Drupal.behaviors.glossaryTooltip = {
     attach: function (context) {
@@ -19,7 +22,7 @@
         document.addEventListener('keydown', function (event) {
           if (event.key === 'Escape' && openTerm) {
             openTerm.hide();
-            openTerm.term.focus();
+            openTerm.trigger.focus();
           }
         });
         document.addEventListener('click', function (event) {
@@ -32,10 +35,14 @@
   };
 
   function initTerm(term) {
+    const trigger = term.querySelector(':scope > .glossary-term__trigger');
     const tooltip = term.querySelector(':scope > .glossary-tooltip');
-    if (!tooltip) {
+    if (!trigger || !tooltip) {
       return;
     }
+
+    tooltip.id = 'glossary-tooltip-' + (++nextTooltipId);
+    trigger.setAttribute('aria-controls', tooltip.id);
 
     let isOpen = false;
 
@@ -45,14 +52,14 @@
       }
       positionTooltip(term, tooltip);
       term.classList.add('is-open');
-      term.setAttribute('aria-expanded', 'true');
+      trigger.setAttribute('aria-expanded', 'true');
       isOpen = true;
-      openTerm = { term: term, hide: hide };
+      openTerm = { term: term, trigger: trigger, hide: hide };
     }
 
     function hide() {
       term.classList.remove('is-open');
-      term.setAttribute('aria-expanded', 'false');
+      trigger.setAttribute('aria-expanded', 'false');
       isOpen = false;
       if (openTerm && openTerm.term === term) {
         openTerm = null;
@@ -68,13 +75,9 @@
       }
     });
 
-    // Tap toggles the tooltip on touch devices; the "Read more" link inside
-    // stays a normal link.
-    term.addEventListener('click', function (event) {
-      if (event.target.closest('a')) {
-        return;
-      }
-      event.preventDefault();
+    // The trigger is a button: click also covers Enter and Space. Tapping
+    // toggles on touch devices; the "Read more" link stays a normal link.
+    trigger.addEventListener('click', function () {
       if (isOpen) {
         hide();
       } else {

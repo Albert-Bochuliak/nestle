@@ -58,11 +58,31 @@ final class GlossaryDomProcessorTest extends TestCase {
   public function testWrapsMatchAndPreservesStructure(): void {
     $html = $this->process('<p>Cats like <strong>wet food</strong> today.</p>', self::terms());
     $this->assertStringContainsString('<strong>', $html);
-    $this->assertStringContainsString('glossary-term', $html);
+    $this->assertStringContainsString('glossary-term__trigger', $html);
     $this->assertStringContainsString('data-glossary-term="2"', $html);
     $this->assertStringContainsString('Canned pet food', $html);
-    $this->assertStringContainsString('role="tooltip"', $html);
     $this->assertStringContainsString('aria-expanded="false"', $html);
+    $this->assertStringContainsString('<button', $html);
+  }
+
+  /**
+   * The trigger is a button; the interactive link must not sit inside it.
+   */
+  public function testLinkIsOutsideTriggerButton(): void {
+    $html = $this->process('<p>food</p>', [
+      1 => ['name' => 'Food', 'description' => str_repeat('a', 120), 'url' => '/t/1'],
+    ]);
+    $this->assertLessThan(strpos($html, '<a '), strpos($html, '</button>'));
+  }
+
+  /**
+   * Tooltip IDs are assigned by JS at init so repeated cached fragments
+   * can never collide — PHP must not emit one.
+   */
+  public function testNoTooltipIdInServerMarkup(): void {
+    $html = $this->process('<p>food</p>', self::terms());
+    $this->assertStringNotContainsString('id="glossary-tooltip', $html);
+    $this->assertStringNotContainsString('aria-controls', $html);
   }
 
   public function testLongestTermWins(): void {
@@ -92,12 +112,12 @@ final class GlossaryDomProcessorTest extends TestCase {
 
   public function testFirstOccurrenceOnly(): void {
     $html = $this->process('<p>food, food, food</p>', self::terms(), TRUE);
-    $this->assertSame(1, substr_count($html, 'glossary-term"'));
+    $this->assertSame(1, substr_count($html, 'data-glossary-term="'));
   }
 
   public function testEveryOccurrence(): void {
     $html = $this->process('<p>food, food, food</p>', self::terms(), FALSE);
-    $this->assertSame(3, substr_count($html, 'glossary-term"'));
+    $this->assertSame(3, substr_count($html, 'data-glossary-term="'));
   }
 
   public function testNonLatinTerm(): void {
@@ -112,7 +132,7 @@ final class GlossaryDomProcessorTest extends TestCase {
     $html = $this->process('<p>food</p>', [
       1 => ['name' => 'Food', 'description' => $description, 'url' => '/taxonomy/term/1'],
     ]);
-    $this->assertStringContainsString('aria-details="glossary-tooltip-1-', $html);
+    $this->assertStringContainsString('aria-expanded="false"', $html);
     $this->assertSame($expectLink, str_contains($html, 'glossary-tooltip__link'));
     $this->assertSame($expectLink, str_contains($html, 'href="/taxonomy/term/1"'));
   }
@@ -134,16 +154,6 @@ final class GlossaryDomProcessorTest extends TestCase {
     preg_match('/glossary-tooltip__content[^>]*>([^<]+)</', $html, $m);
     $this->assertSame(100, mb_strlen($m[1]));
     $this->assertStringEndsWith('…', $m[1]);
-  }
-
-  /**
-   * Tooltip IDs are unique even for repeated terms in one document.
-   */
-  public function testUniqueTooltipIds(): void {
-    $html = $this->process('<p>food and food</p>', self::terms(), FALSE);
-    preg_match_all('/id="(glossary-tooltip-[^"]+)"/', $html, $m);
-    $this->assertSame(2, count($m[1]));
-    $this->assertSame($m[1], array_unique($m[1]));
   }
 
 }

@@ -9,6 +9,11 @@ use Drupal\Core\StringTranslation\TranslationInterface;
 
 /**
  * Builds the accessible tooltip markup for a matched glossary term.
+ *
+ * Markup follows the disclosure pattern: a native <button> trigger exposes
+ * state through aria-expanded and points at the tooltip via aria-controls
+ * (assigned in JS together with a unique ID). role="tooltip" is not used —
+ * the panel contains an interactive link, which tooltips forbid.
  */
 final class TooltipElementBuilder {
 
@@ -29,38 +34,31 @@ final class TooltipElementBuilder {
   /**
    * Builds the highlight span with its tooltip.
    *
-   * The tooltip uses a disclosure pattern: the term is focusable and exposes
-   * state through aria-expanded, while aria-details points at the tooltip.
-   * aria-details (rather than aria-describedby) is used because the tooltip
-   * contains an interactive "Read more" link, which plain tooltips forbid.
-   *
-   * The tooltip ID contains uniqid(), so identical terms in separately
-   * cached fragments on the same page never produce duplicate HTML IDs.
-   *
    * @param string $matchedText
    *   The matched term text as it appears in the content.
-   * @param array{name: string, description: string, url: string} $term
-   *   Term data.
-   * @param int $termId
-   *   The term ID.
+   * @param array{id: int, name: string, description: string, url: string} $term
+   *   Term data, including the term ID.
    */
   public function buildElement(
     \DOMDocument $document,
     string $matchedText,
     array $term,
-    int $termId,
   ): \DOMElement {
-    $tooltip_id = sprintf('glossary-tooltip-%d-%s', $termId, uniqid());
-
     $wrapper = $document->createElement('span');
     $wrapper->setAttribute('class', 'glossary-term');
-    $wrapper->setAttribute('tabindex', '0');
-    $wrapper->setAttribute('aria-expanded', 'false');
-    $wrapper->setAttribute('aria-details', $tooltip_id);
-    $wrapper->setAttribute('data-glossary-term', (string) $termId);
-    $wrapper->appendChild($document->createTextNode($matchedText));
+    $wrapper->setAttribute('data-glossary-term', (string) $term['id']);
 
-    $wrapper->appendChild($this->buildTooltip($document, $term, $tooltip_id));
+    // The trigger is a native button: keyboard activation and focusability
+    // come for free. No ID here — JS assigns a unique one per render so
+    // repeated cached fragments never collide, and links aria-controls.
+    $trigger = $document->createElement('button');
+    $trigger->setAttribute('type', 'button');
+    $trigger->setAttribute('class', 'glossary-term__trigger');
+    $trigger->setAttribute('aria-expanded', 'false');
+    $trigger->appendChild($document->createTextNode($matchedText));
+    $wrapper->appendChild($trigger);
+
+    $wrapper->appendChild($this->buildTooltip($document, $term));
 
     return $wrapper;
   }
@@ -68,14 +66,12 @@ final class TooltipElementBuilder {
   /**
    * Builds the tooltip element with description and optional link.
    *
-   * @param array{name: string, description: string, url: string} $term
-   *   Term data.
+   * @param array{id: int, name: string, description: string, url: string} $term
+   *   Term data, including the term ID.
    */
-  private function buildTooltip(\DOMDocument $document, array $term, string $tooltip_id): \DOMElement {
+  private function buildTooltip(\DOMDocument $document, array $term): \DOMElement {
     $tooltip = $document->createElement('span');
     $tooltip->setAttribute('class', 'glossary-tooltip');
-    $tooltip->setAttribute('id', $tooltip_id);
-    $tooltip->setAttribute('role', 'tooltip');
 
     $description = $term['description'];
     $is_truncated = mb_strlen($description) > self::DESCRIPTION_LIMIT;
@@ -90,9 +86,10 @@ final class TooltipElementBuilder {
     $tooltip->appendChild($content);
 
     if ($is_truncated) {
-      $link = $document->createElement('a', (string) $this->t('Read more'));
+      $link = $document->createElement('a');
       $link->setAttribute('class', 'glossary-tooltip__link');
       $link->setAttribute('href', $term['url']);
+      $link->appendChild($document->createTextNode((string) $this->t('Read more')));
       $tooltip->appendChild($link);
     }
 

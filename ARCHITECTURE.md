@@ -56,39 +56,42 @@ formats such as Basic HTML and Full HTML.
 
 - `create()` — pulls `glossary_tooltip.highlighter` and the module's logger
   channel from the container (`ContainerFactoryPluginInterface`).
-- `process($text, $langcode)` — runs the highlighter, sets the processed
-  text, adds `taxonomy_term_list:glossary` and
-  `config:glossary_tooltip.settings` cache tags, and attaches the
-  `glossary_tooltip/glossary_tooltip` library only on matches. Any failure
-  is logged and the original text is returned unchanged so rendering never
-  breaks.
+- `process($text, $langcode)` — runs the highlighter with the field's
+  langcode, sets the processed text, bubbles the full `CacheableMetadata`
+  (tags, contexts, max-age) onto the result, and attaches the
+  `glossary_tooltip/glossary_tooltip` library only on matches. This is the
+  single fail-safe layer: failures are logged with the langcode and the
+  result gets `max-age 0`, so a transient error never poisons the cache.
 
 ### `GlossaryHighlighter` — `src/Service/GlossaryHighlighter.php`
 
 Pipeline coordinator; contains no regex or DOM logic.
 
-- `highlight(string $html): array` — returns `{text, cache_tags, matched}`.
-  Short-circuits on empty input or no terms; failures are logged and the
-  original HTML is returned.
+- `highlight(string $html, ?string $langcode): array` — returns
+  `{text, matched, cacheability}`. Short-circuits on empty input before
+  loading terms. Exceptions propagate to the filter's fail-safe layer.
 - `isFirstOccurrenceOnly(): bool` — reads the module setting.
 
 ### `GlossaryTermProvider` — `src/Service/GlossaryTermProvider.php`
 
 Term source with two-level caching (request memoization + cache bin).
 
-- `getTerms(): array` — `{id: {name, description, url}}`; request memo →
-  cache bin → storage.
-- `readCache(): ?array` — cache-bin read, NULL on miss/failure.
-- `loadAndCache(): ?array` — loads terms and writes them to the cache;
-  load failures return NULL and are never cached.
-- `getCacheTags(): array` — `['taxonomy_term_list:glossary']`; the bundle-level
-  list tag is invalidated by core on every save/unpublish/delete of a term
-  in this vocabulary only.
-- `loadTerms(): array` — one entity query (`accessCheck(FALSE)`: term data
-  is identical for all viewers, so the shared cache cannot mix per-user
-  results) + one `loadMultiple()` batch load — no N+1 queries.
+- `getTerms(?string $langcode): array` — `{id: {name, description, url}}`;
+  per-language request memo → per-language cache CID → storage. Failed
+  loads return `[]` without being memoized or cached.
+- `getCacheMetadata(): CacheableMetadata` — tags
+  (`taxonomy_term_list:glossary`), contexts
+  (`languages:language_content`) and generated-URL cacheability bubbled
+  during `loadTerms()`.
+- `readCache()/loadAndCache()/loadTerms()` — one entity query
+  (`accessCheck(FALSE)` because access is checked explicitly against the
+  anonymous user below), sorted by weight then tid for deterministic
+  order, plus one `loadMultiple()` batch — no N+1 queries.
+- Access: each term passes `$term->access('view', $anonymous)` so the
+  shared cache never mixes per-user results; translated terms are fetched
+  via `entity.repository::getTranslationFromContext()`.
 - `extractDescription(TermInterface): string` — `processed ?? value`,
-  stripped tags, plain text.
+  `strip_tags`, `Html::decodeEntities`, trim.
 
 ### `GlossaryMatcher` — `src/Service/GlossaryMatcher.php`
 
@@ -141,21 +144,23 @@ Compact per-run state object.
 
 Owns all generated markup and the 100-character limit.
 
-- `buildElement(\DOMDocument, string $matchedText, array $term, int $termId): \DOMElement`
-  — `.glossary-term` span: focusable, `aria-expanded`, `aria-details`
-  (disclosure pattern — the tooltip contains an interactive link, which
-  `aria-describedby`/plain tooltips forbid), `data-glossary-term`.
-  Tooltip IDs embed `uniqid()` so repeated cached fragments never collide.
-- `buildTooltip()` — `.glossary-tooltip` (`role="tooltip"`), the
-  `.glossary-tooltip__content` description and the "Read more" link
-  (`.glossary-tooltip__link`) shown only when truncated.
+- `buildElement(\DOMDocument, string $matchedText, array $term): \DOMElement`
+  — disclosure pattern: `.glossary-term` wrapper holding a native
+  `<button class="glossary-term__trigger">` (keyboard/focus for free)
+  with `aria-expanded`, plus the tooltip as its sibling. No `role="tooltip"`
+  — the panel contains an interactive link, which tooltips forbid.
+  No IDs are emitted: JS assigns unique IDs + `aria-controls` at init so
+  repeated cached fragments never collide.
+- `buildTooltip()` — `.glossary-tooltip` with `.glossary-tooltip__content`
+  and the "Read more" link shown only when truncated.
 - Truncation: `mb_substr` to `DESCRIPTION_LIMIT - 1` chars + `…`, so text
   plus ellipsis never exceeds 100 characters.
 
 ### `GlossaryTooltipSettingsForm` — `src/Form/GlossaryTooltipSettingsForm.php`
 
-Config form at `/admin/config/content/glossary-tooltip` with a single
-`first_occurrence_only` checkbox persisted to `glossary_tooltip.settings`.
+Config form at `/admin/config/content/glossary-tooltip`; the
+`first_occurrence_only` checkbox uses `#config_target`, so Drupal 11
+handles the default value and persistence — no custom submitForm.
 
 ### `glossary_tooltip_install()` — `glossary_tooltip.install`
 
@@ -172,24 +177,27 @@ CSS, two SVG assets and the Roboto / Roboto Slab webfonts — no build step.
 - `attach(context)` — `once()`-guarded init of every `.glossary-term`;
   one delegated `document` `keydown`/`click` pair for Escape-close
   (restoring focus) and outside-click-close.
-- `initTerm(term)` — `show()`/`hide()` enforcing a single-open-tooltip
-  invariant; `mouseenter`/`mouseleave`, `focusin`/`focusout` (keeps open
-  while focus moves inside, e.g. to "Read more"), and click toggling on
-  touch devices (link taps pass through).
+- `initTerm(term)` — assigns `glossary-tooltip-N` ID + `aria-controls`;
+  `show()`/`hide()` enforcing a single-open-tooltip invariant;
+  `mouseenter`/`mouseleave`, `focusin`/`focusout` (keeps open while focus
+  moves inside, e.g. to "Read more"); the native button's click (Enter/
+  Space included) toggles on touch devices.
 - `positionTooltip(term, tooltip)` — measures hidden, picks `--above`/
   `--below` by free space, clamps horizontally to the text block ∩
   viewport, counter-shifts the arrow via `--arrow-offset`.
 
 ### `css/glossary-tooltip.css`
 
-Figma styles: `.glossary-term` inline-block (multi-word terms can't split,
-keeping anchoring correct) with 10% teal background and underline;
+Figma styles: `.glossary-term` inline-block wrapper (multi-word terms
+can't split, keeping anchoring correct); `.glossary-term__trigger` button
+reset + 10% teal background and underline;
 `.glossary-tooltip` `#0D7978`, `13px 24px`, radius 8px, Roboto 14/20 white;
 `::before` hover bridge; `::after` SVG arrow flipped for `--above`;
 `.glossary-tooltip__link` Roboto Slab 500 with theme-hover resets.
 
 ### Accessibility
 
-Focusable terms (`tabindex="0"`), `aria-expanded` + `aria-details` →
-`role="tooltip"`; Tab opens, Escape closes with focus restore, Tab again
-reaches "Read more"; tap toggles on touch.
+Native `<button>` trigger (focusable, Enter/Space activation),
+`aria-expanded` + `aria-controls` → tooltip panel; Tab opens, Escape
+closes with focus restore, Tab again reaches "Read more"; tap toggles on
+touch.

@@ -7,11 +7,10 @@ namespace Drupal\glossary_tooltip\Model;
 use Drupal\glossary_tooltip\Service\GlossaryMatcher;
 
 /**
- * Per-run state of a single highlighting pass.
+ * Mutable per-run state of a single highlighting pass.
  *
- * A compact value object holding the normalized term index plus the
- * first-occurrence bookkeeping. A fresh instance per call keeps runs
- * isolated from each other.
+ * Holds the normalized term index plus the first-occurrence bookkeeping.
+ * A fresh instance per call keeps runs isolated from each other.
  */
 final class HighlightContext {
 
@@ -72,11 +71,17 @@ final class HighlightContext {
   public function termFor(string $matched): ?array {
     $entry = $this->index[$this->matcher->normalize($matched)] ?? NULL;
 
-    if ($entry === NULL || ($this->firstOnly && isset($this->seen[$entry['id']]))) {
+    if ($entry === NULL) {
       return NULL;
     }
 
-    $this->seen[$entry['id']] = TRUE;
+    if ($this->firstOnly) {
+      if (isset($this->seen[$entry['id']])) {
+        return NULL;
+      }
+      $this->seen[$entry['id']] = TRUE;
+    }
+
     return $entry;
   }
 

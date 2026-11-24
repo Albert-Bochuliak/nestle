@@ -59,6 +59,10 @@ final class GlossaryMatcherTest extends TestCase {
       'non-Latin' => ['Слово здоровʼя у тексті.', ["здоровʼя"], ["здоровʼя"]],
       'case-insensitive' => ['ARTHRITIS and arthritis.', ['Arthritis'], ['ARTHRITIS', 'arthritis']],
       'no partial word match' => ['A catalogue entry.', ['cat'], []],
+      'numeric term name' => ['Error 404 found.', ['404'], ['404']],
+      'numeric boundary' => ['Error 4044 found.', ['404'], []],
+      // "é" as e + combining acute accent (U+0301) is a word character.
+      'combining mark' => ["un cafe\u{0301} s'il vous plaît", ["cafe\u{0301}"], ["cafe\u{0301}"]],
     ];
   }
 

@@ -63,15 +63,10 @@ final class GlossaryTooltipFilter extends FilterBase implements ContainerFactory
     $result = new FilterProcessResult((string) $text);
 
     try {
-      $highlighted = $this->highlighter->highlight((string) $text);
+      $highlighted = $this->highlighter->highlight((string) $text, (string) $langcode);
 
       $result->setProcessedText($highlighted['text']);
-      // Filtered output also depends on the module settings: toggling
-      // "first occurrence only" must invalidate the cached markup.
-      $result->addCacheTags(array_merge(
-        $highlighted['cache_tags'],
-        ['config:glossary_tooltip.settings'],
-      ));
+      $result->addCacheableDependency($highlighted['cacheability']);
 
       if ($highlighted['matched']) {
         $result->addAttachments([
@@ -80,10 +75,13 @@ final class GlossaryTooltipFilter extends FilterBase implements ContainerFactory
       }
     }
     catch (\Throwable $exception) {
-      // Never break rendering: on failure return the text unchanged.
-      $this->logger->error('Glossary Tooltip filter failed: @message', [
+      // Fail-safe lives here: rendering never breaks and the fallback is
+      // not cached long-term, so a transient failure self-heals.
+      $this->logger->error('Glossary Tooltip filter failed for langcode @langcode: @message', [
+        '@langcode' => $langcode,
         '@message' => $exception->getMessage(),
       ]);
+      $result->mergeCacheMaxAge(0);
     }
 
     return $result;

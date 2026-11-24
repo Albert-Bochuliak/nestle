@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace Drupal\glossary_tooltip\Service;
 
+use Drupal\Core\Cache\CacheableMetadata;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\glossary_tooltip\Dom\GlossaryDomProcessor;
 use Drupal\glossary_tooltip\Model\HighlightContext;
-use Psr\Log\LoggerInterface;
 
 /**
  * Coordinates glossary term highlighting in HTML markup.
  *
  * Owns the pipeline — fetching terms, reading settings, building the run
  * context and calling the DOM processor — and knows nothing about regexes
- * or low-level DOM manipulation.
+ * or low-level DOM manipulation. Fail-safe handling lives one level up, in
+ * the filter plugin; exceptions propagate there.
  */
 final class GlossaryHighlighter {
 
@@ -29,15 +30,12 @@ final class GlossaryHighlighter {
    *   Rewrites the markup, wrapping matched terms.
    * @param \Drupal\Core\Config\ConfigFactoryInterface $configFactory
    *   Reads the module settings (first-occurrence mode).
-   * @param \Psr\Log\LoggerInterface $logger
-   *   Logs highlighting failures.
    */
   public function __construct(
     private readonly GlossaryTermProvider $termProvider,
     private readonly GlossaryMatcher $matcher,
     private readonly GlossaryDomProcessor $domProcessor,
     private readonly ConfigFactoryInterface $configFactory,
-    private readonly LoggerInterface $logger,
   ) {}
 
   /**
@@ -45,35 +43,38 @@ final class GlossaryHighlighter {
    *
    * @param string $html
    *   The markup to scan.
+   * @param string|null $langcode
+   *   Language code of the content, used for translated terms and URLs.
    *
-   * @return array{text: string, cache_tags: string[], matched: bool}
-   *   Processed markup, cache tags and whether any term was matched.
+   * @return array{text: string, matched: bool, cacheability: \Drupal\Core\Cache\CacheableMetadata}
+   *   Processed markup, whether any term was matched and cache metadata.
    */
-  public function highlight(string $html): array {
+  public function highlight(string $html, ?string $langcode = NULL): array {
     $result = [
       'text' => $html,
-      'cache_tags' => $this->termProvider->getCacheTags(),
       'matched' => FALSE,
+      'cacheability' => (new CacheableMetadata())
+        ->merge($this->termProvider->getCacheMetadata())
+        // Filtered output depends on the module settings, so toggling
+        // "first occurrence only" must invalidate the cached markup.
+        ->addCacheTags(['config:glossary_tooltip.settings']),
     ];
 
-    $terms = $this->termProvider->getTerms();
-    if ($terms === [] || trim($html) === '') {
+    if (trim($html) === '') {
       return $result;
     }
 
-    try {
-      $context = new HighlightContext($terms, $this->isFirstOccurrenceOnly(), $this->matcher);
-      $processed = $this->domProcessor->process($html, $context);
-
-      if ($processed !== NULL) {
-        $result['text'] = $processed;
-        $result['matched'] = TRUE;
-      }
+    $terms = $this->termProvider->getTerms($langcode);
+    if ($terms === []) {
+      return $result;
     }
-    catch (\Throwable $exception) {
-      $this->logger->error('Glossary highlighting failed: @message', [
-        '@message' => $exception->getMessage(),
-      ]);
+
+    $context = new HighlightContext($terms, $this->isFirstOccurrenceOnly(), $this->matcher);
+    $processed = $this->domProcessor->process($html, $context);
+
+    if ($processed !== NULL) {
+      $result['text'] = $processed;
+      $result['matched'] = TRUE;
     }
 
     return $result;

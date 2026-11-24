@@ -16,7 +16,13 @@ final class GlossaryMatcher {
   /**
    * Characters considered part of a word for boundary checks.
    */
-  private const WORD_CHARS = '\p{L}\p{N}_';
+  /**
+   * Characters considered part of a word for boundary checks.
+   *
+   * \p{M} covers combining marks so accented and decomposed characters
+   * still count as word characters.
+   */
+  private const WORD_CHARS = '\p{L}\p{N}\p{M}_';
 
   /**
    * Compiles the term alternation pattern, longest terms first.
@@ -34,7 +40,12 @@ final class GlossaryMatcher {
    *   strategy can be added here without changing callers.
    */
   public function compile(array $names): ?string {
-    $names = array_values(array_unique(array_filter(array_map('trim', $names), 'strlen')));
+    // (string) cast: numeric term names arrive as integers because PHP
+    // converts numeric array keys.
+    $names = array_values(array_unique(array_filter(
+      array_map(static fn($name): string => trim((string) $name), $names),
+      'strlen',
+    )));
 
     if ($names === []) {
       return NULL;
@@ -80,7 +91,7 @@ final class GlossaryMatcher {
 
     $count = preg_match_all($pattern, $text, $matches, PREG_OFFSET_CAPTURE);
     if ($count === FALSE) {
-      throw new \RuntimeException('Glossary term matching failed.');
+      throw new \RuntimeException('Glossary term matching failed: ' . preg_last_error_msg());
     }
 
     return array_map(
