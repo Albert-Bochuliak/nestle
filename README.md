@@ -88,11 +88,17 @@ tap toggles on touch.
 ## Tests
 
 ```
-php phpunit.phar --bootstrap phpunit-bootstrap.php modules/custom/glossary_tooltip/tests
+php phpunit.phar --bootstrap phpunit-bootstrap.php modules/custom/glossary_tooltip/tests/src/Unit
+php phpunit.phar -c phpunit.xml --testsuite glossary-kernel
+php phpunit.phar -c phpunit.xml --testsuite glossary-functional
 ```
 
-63 unit tests, 117 assertions (matcher incl. chunked mode, DOM
-processor, run context, term provider).
+70 tests, 193 assertions: 63 unit (matcher incl. chunked mode, DOM
+processor, run context, term provider), 6 kernel (real install,
+entity/Filter/Config/Access APIs, fail-safe) and 1 functional
+end-to-end cache-invalidation lifecycle. Kernel and functional runs
+need `phpunit.xml` at the docroot with `SIMPLETEST_DB` and
+`SIMPLETEST_BASE_URL` (see `core/phpunit.xml.dist`).
 
 Code style and static analysis (with `drupal/coder`, `phpstan` and
 `mglaman/phpstan-drupal` installed):
