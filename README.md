@@ -97,8 +97,11 @@ php phpunit.phar -c phpunit.xml --testsuite glossary-functional
 processor, run context, term provider), 6 kernel (real install,
 entity/Filter/Config/Access APIs, fail-safe) and 1 functional
 end-to-end cache-invalidation lifecycle. Kernel and functional runs
-need `phpunit.xml` at the docroot with `SIMPLETEST_DB` and
-`SIMPLETEST_BASE_URL` (see `core/phpunit.xml.dist`).
+need PHPUnit 11 (core 11.4 TestTools), `phpspec/prophecy-phpunit`,
+`mikey179/vfsstream`, `behat/mink` + `behat/mink-browserkit-driver`,
+a `phpunit.xml` at the docroot with `SIMPLETEST_DB` and
+`SIMPLETEST_BASE_URL` (see `core/phpunit.xml.dist`), and `ext-gd` for
+the functional site install.
 
 Code style and static analysis (with `drupal/coder`, `phpstan` and
 `mglaman/phpstan-drupal` installed):
@@ -109,5 +112,8 @@ vendor/bin/phpstan analyse
 ```
 
 A repeatable performance harness lives in `benchmark.php` (see
-`--matcher`, `--components`, `--tier=N` options); measured results are
-recorded in [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md).
+`--matcher`, `--components`, `--tier=N` options). Run each tier as a
+separate `--tier=N` process: the shared provider service memoizes the
+vocabulary for the whole process, so a single multi-tier run would
+measure a stale term set. Measured results are recorded in
+[BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md).

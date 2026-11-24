@@ -156,3 +156,51 @@ alternatives — zero matches, fail-safe output, max-age 0.
 - Regex cost at large vocabularies is ~50–57 ms/100 KB vs ~7 ms for a
   single pattern — the price of several scans per text node; acceptable
   because correctness returns and it is only paid past ~1 500 terms.
+
+## Final validation run (per-process tiers)
+
+Caveat found during this run: inside one PHP process the shared
+`glossary_tooltip.term_provider` service memoizes the vocabulary, so
+a single multi-tier run measured stale (first-tier) terms for
+matcher/DOM metrics. The numbers below were collected with each tier
+run as its own `--tier=N` process; HTTP metrics were never affected
+(each request is a separate process anyway).
+
+### Full Drupal pipeline (service-level, per-process)
+
+| Terms | Chunks | Pattern | Compile p50 | Ctx p50 | Provider cold | Provider warm | Queries | Peak |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 100 | 1 | 1.5 KB | 0.18 ms | 0.06 ms | 53 ms | 11 ms | 2 | 27 MB |
+| 1 000 | 1 | 13.5 KB | 2.26 ms | 1.53 ms | 2 053 ms | 303 ms | 17 | 98 MB |
+| 2 332 | 2 | 31.3 KB | 8.52 ms | 5.47 ms | 1 831 ms | 864 ms | 30 | 165 MB |
+| 2 333 | 2 | 31.4 KB | 6.94 ms | 4.29 ms | 1 791 ms | 838 ms | 30 | 168 MB |
+| 5 000 | 5 | 67.1 KB | 21.1 ms | 9.40 ms | 4 622 ms | 2 599 ms | 57 | 304 MB |
+| 10 000 | 9 | 134.0 KB | 48.1 ms | 17.7 ms | 11 285 ms | 7 705 ms | 107 | 560 MB |
+
+### DOM pipeline, 100 KB "few" density (first vs every occurrence)
+
+| Terms | process (first) | process (every) | regex | DOM parse | DOM serialize |
+|---:|---:|---:|---:|---:|---:|
+| 100 | 37.4 ms | 39.0 ms | 0.66 ms | 17.9 ms | 29.7 ms |
+| 1 000 | 51.7 ms | 53.1 ms | 8.00 ms | 13.7 ms | 30.6 ms |
+| 5 000 | 96.4 ms | 99.0 ms | 5.41 ms | 20.4 ms | 25.5 ms |
+| 10 000 | 143.2 ms | 139.6 ms | 6.27 ms | 11.5 ms | 29.6 ms |
+
+### HTTP TTFB (50 KB node, few density, no manual cache clear)
+
+| Terms | Cold (3 hits) | Warm p50 | Warm p95 |
+|---:|---|---:|---:|
+| 100 | 713–932 ms | 53.5 ms | 61.9 ms |
+| 1 000 | 924–1 084 ms | 59.1 ms | 78.0 ms |
+| 2 332 | 1 616–1 701 ms | 59.2 ms | 77.9 ms |
+| 2 333 | 1 831–1 865 ms | 64.8 ms | 80.8 ms |
+| 5 000 | 3 870–4 055 ms | 90.0 ms | 104.2 ms |
+| 10 000 | 9 954–11 529 ms | 125.5 ms | 154.2 ms |
+
+Matcher-only boundary tiers confirmed again: 2 332 → 2 chunks,
+2 333 → 2 chunks, 10 000 → 9 chunks / 139.9 KB, real tooltips rendered
+at every tier, zero PCRE errors.
+
+Remaining bottleneck: `loadMultiple()` entity loading at 5k–10k terms
+(linear, ~60% of provider time) — core storage cost, outside this
+module's scope.
