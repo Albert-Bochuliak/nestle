@@ -64,7 +64,7 @@ bench_run($tier);
 function bench_run(?int $only_tier): void {
   printf("env: %s\n", json_encode(bench_env(), JSON_UNESCAPED_SLASHES));
 
-  $tiers = [100, 1000, 5000, 10000];
+  $tiers = [100, 1000, 2332, 2333, 5000, 10000];
   foreach ($tiers as $count) {
     if ($only_tier !== NULL && $only_tier !== $count) {
       continue;
@@ -300,6 +300,15 @@ function bench_tier(int $count): void {
         ),
         5,
       );
+      if ($density === 'few') {
+        $out["{$key}_process_every"] = bench_measure(
+          static fn() => \Drupal::service('glossary_tooltip.dom_processor')->process(
+            $html,
+            new HighlightContext($terms, FALSE, $matcher),
+          ),
+          5,
+        );
+      }
       $out["{$key}_parse"] = bench_measure(static fn() => Html::load($html), 10);
       $out["{$key}_serialize"] = bench_measure(
         static fn() => Html::serialize(Html::load($html)),
