@@ -53,7 +53,8 @@ highlighting the first occurrence of each term or every occurrence.
 - `GlossaryHighlighter` coordinates the pipeline; `GlossaryDomProcessor`
   walks `DOMDocument` text nodes skipping links and non-content
   elements; `GlossaryMatcher` is a dependency-free Unicode-safe matcher
-  (case-insensitive, word-boundary aware, longest-match-first);
+  (case-insensitive, word-boundary aware, longest-match-first) that
+  splits its pattern into safe chunks for large vocabularies;
   `TooltipElementBuilder` owns the accessible disclosure markup.
 - `js/glossary-tooltip.js` positions the tooltip above or below the term
   and supports hover, keyboard focus, Escape and touch taps.
@@ -80,19 +81,27 @@ tap toggles on touch.
 - A multi-word term split by inline markup (`wet <em>food</em>`) is not
   matched — matching happens per text node.
 - Only published terms viewable by anonymous users are highlighted.
+- Very large vocabularies (~10k terms) work but carry a heavy
+  entity-load cost per cold request; measured numbers are in
+  [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md).
 
 ## Tests
 
 ```
-phpunit modules/custom/glossary_tooltip/tests/src/Unit
+php phpunit.phar --bootstrap phpunit-bootstrap.php modules/custom/glossary_tooltip/tests
 ```
 
-38 unit tests, 60 assertions (matcher, DOM processor, run context).
+63 unit tests, 117 assertions (matcher incl. chunked mode, DOM
+processor, run context, term provider).
 
 Code style and static analysis (with `drupal/coder`, `phpstan` and
 `mglaman/phpstan-drupal` installed):
 
 ```
 vendor/bin/phpcs --standard=Drupal,DrupalPractice modules/custom/glossary_tooltip
-vendor/bin/phpstan analyse modules/custom/glossary_tooltip
+vendor/bin/phpstan analyse
 ```
+
+A repeatable performance harness lives in `benchmark.php` (see
+`--matcher`, `--components`, `--tier=N` options); measured results are
+recorded in [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md).
