@@ -53,8 +53,8 @@ final class GlossaryDomProcessor {
    *   is parsed once and serialized only when it changed.
    */
   public function process(string $html, HighlightContext $context): ?string {
-    $pattern = $this->matcher->compile($context->names());
-    if ($pattern === NULL) {
+    $patterns = $this->matcher->compile($context->names());
+    if ($patterns === NULL) {
       return NULL;
     }
 
@@ -69,7 +69,7 @@ final class GlossaryDomProcessor {
         continue;
       }
 
-      $matches = $this->matcher->findMatches($text_node->nodeValue ?? '', $pattern);
+      $matches = $this->matcher->findMatches($text_node->nodeValue ?? '', $patterns);
       if ($matches !== []) {
         $changed = $this->wrapMatches($document, $text_node, $matches, $context) || $changed;
       }

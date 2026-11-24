@@ -29,7 +29,7 @@ use Drupal\node\Entity\Node;
 use Drupal\taxonomy\Entity\Term;
 use Symfony\Component\HttpFoundation\Request;
 
-$opts = getopt('', ['tier::', 'cleanup', 'components']);
+$opts = getopt('', ['tier::', 'cleanup', 'components', 'matcher']);
 $tier = isset($opts['tier']) ? (int) $opts['tier'] : NULL;
 
 $autoload = require __DIR__ . '/../../../autoload.php';
@@ -45,6 +45,11 @@ if (isset($opts['cleanup'])) {
 
 if (isset($opts['components'])) {
   bench_components();
+  exit(0);
+}
+
+if (isset($opts['matcher'])) {
+  bench_matcher();
   exit(0);
 }
 
@@ -265,7 +270,9 @@ function bench_tier(int $count): void {
     static fn() => $matcher->compile($names),
     10,
   );
-  $pattern = $matcher->compile($names);
+  $patterns = $matcher->compile($names);
+  $out['pattern_count'] = $patterns === NULL ? 0 : count($patterns);
+  $out['pattern_len_kb'] = $patterns === NULL ? 0 : round(array_sum(array_map('strlen', $patterns)) / 1024, 1);
 
   $out['context_build'] = bench_measure(
     static fn() => new HighlightContext($terms, TRUE, $matcher),
@@ -301,8 +308,8 @@ function bench_tier(int $count): void {
 
       // Isolated regex cost on the plain text payload.
       $text = strip_tags($html);
-      $out["{$key}_regex"] = $pattern === NULL ? NULL : bench_measure(
-        static fn() => $matcher->findMatches($text, $pattern),
+      $out["{$key}_regex"] = $patterns === NULL ? NULL : bench_measure(
+        static fn() => $matcher->findMatches($text, $patterns),
         10,
       );
       $out["{$key}_peak_mem"] = bench_peak(static fn() => \Drupal::service('glossary_tooltip.highlighter')->highlight($html, 'en'));
@@ -427,8 +434,10 @@ function bench_components(): void {
       static fn() => $matcher->compile($term_names),
       10,
     );
-    $pattern = $matcher->compile($term_names);
-    $out['pattern_len_kb'] = $pattern === NULL ? 0 : round(strlen($pattern) / 1024, 1);
+    $patterns = $matcher->compile($term_names);
+    $out['pattern_count'] = $patterns === NULL ? 0 : count($patterns);
+    $out['pattern_len_kb'] = $patterns === NULL ? 0 : round(array_sum(array_map('strlen', $patterns)) / 1024, 1);
+    $out['pattern_max_kb'] = $patterns === NULL ? 0 : round(max(array_map('strlen', $patterns)) / 1024, 1);
 
     $out['context_build'] = bench_measure(
       static fn() => new HighlightContext($terms, TRUE, $matcher),
@@ -453,8 +462,8 @@ function bench_components(): void {
         }
         $text = strip_tags($html);
         try {
-          $out["{$key}_regex"] = $pattern === NULL ? NULL : bench_measure(
-            static fn() => $matcher->findMatches($text, $pattern),
+          $out["{$key}_regex"] = $patterns === NULL ? NULL : bench_measure(
+            static fn() => $matcher->findMatches($text, $patterns),
             10,
           );
         }
@@ -466,6 +475,81 @@ function bench_components(): void {
     $out['peak_mem_mb'] = round(memory_get_peak_usage() / 1048576, 1);
     bench_persist($out);
     printf("components %d done (peak %.0fMB)\n", $count, $out['peak_mem_mb']);
+  }
+}
+
+/**
+ * Measures the matcher in isolation across PCRE-limit boundary tiers.
+ *
+ * Term names are generated (no entities), so TermProvider cost cannot
+ * distort the numbers. Covers both sides of the previously measured
+ * ~2 333-alternative PCRE failure point and verifies that chunked mode
+ * still produces real tooltips end to end.
+ */
+function bench_matcher(): void {
+  printf("env: %s\n", json_encode(bench_env(), JSON_UNESCAPED_SLASHES));
+
+  $matcher = new GlossaryMatcher();
+  foreach ([100, 1000, 2332, 2333, 5000, 10000] as $count) {
+    // Deterministic mix of single-word, multi-word and Unicode names.
+    $names = ['wet food', 'a very long multi word glossary term entry'];
+    for ($i = 3; $i <= $count; $i++) {
+      $names[] = match ($i % 50) {
+        0 => 'multi word term ' . $i,
+        25 => 'термін ' . $i,
+        default => 'benchterm' . $i,
+      };
+    }
+
+    $out = ['matcher_terms' => $count];
+    $out['pattern_compile'] = bench_measure(
+      static fn() => $matcher->compile($names),
+      10,
+    );
+    $patterns = $matcher->compile($names);
+    $out['pattern_count'] = $patterns === NULL ? 0 : count($patterns);
+    $out['pattern_len_kb'] = $patterns === NULL ? 0 : round(array_sum(array_map('strlen', $patterns)) / 1024, 1);
+    $out['pattern_max_kb'] = $patterns === NULL ? 0 : round(max(array_map('strlen', $patterns)) / 1024, 1);
+
+    // Regex + match resolution on a 100 KB payload with matches present.
+    $html = bench_make_html(100 * 1024, 'many', $names);
+    $text = strip_tags($html);
+    try {
+      $out['regex_100kb'] = $patterns === NULL ? NULL : bench_measure(
+        static fn() => $matcher->findMatches($text, $patterns),
+        10,
+      );
+      $found = $patterns === NULL ? 0 : count($matcher->findMatches($text, $patterns));
+      $out['regex_matches'] = $found;
+    }
+    catch (\Throwable $e) {
+      $out['regex_100kb'] = 'FAIL: ' . $e->getMessage();
+    }
+
+    // End-to-end proof: real tooltips must appear, not a fail-safe passthrough.
+    $terms = [];
+    foreach ($names as $id => $name) {
+      $terms[$id + 1] = [
+        'name' => $name,
+        'description' => 'd',
+        'url' => '/taxonomy/term/' . ($id + 1),
+      ];
+    }
+    try {
+      $small = '<p>A wet food dish.</p>';
+      $result = \Drupal::service('glossary_tooltip.dom_processor')->process(
+        $small,
+        new HighlightContext($terms, TRUE, $matcher),
+      );
+      $out['tooltip_rendered'] = $result !== NULL && str_contains($result, 'glossary-term');
+    }
+    catch (\Throwable $e) {
+      $out['tooltip_rendered'] = 'FAIL: ' . $e->getMessage();
+    }
+
+    $out['peak_mem_mb'] = round(memory_get_peak_usage() / 1048576, 1);
+    bench_persist($out);
+    printf("matcher %d done (peak %.0fMB)\n", $count, $out['peak_mem_mb']);
   }
 }
 

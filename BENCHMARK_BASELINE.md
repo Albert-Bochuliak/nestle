@@ -126,7 +126,33 @@ Same harness after replacing `$field->processed` with raw `getValue()` +
 - Recursion gone: the 5k/10k tiers that previously died now complete;
   HTTP warm at 1 000 dropped ~100x (every request used to pay ~11 nested
   `getTerms()` cycles through the 11 `basic_html`-described terms).
-- The PCRE alternation limit (Finding 1) is untouched — regex still fails
-  above ~2 333 alternatives; fail-safe keeps pages servable and cached.
 - Remaining provider cost at 5k/10k is `loadMultiple()` field-table
   queries, not the fixed bug — a separate scaling concern.
+
+## Post-fix re-run (PCRE chunking in GlossaryMatcher)
+
+Matcher-only measurements (`benchmark.php --matcher`, generated names,
+no entities). After the fix every vocabulary size matches correctly and
+the DOM pipeline renders real tooltips (verified, not fail-safe).
+
+| Terms | Chunks | Compile p50 | Regex+merge p50 (100 KB) | Matches | Tooltip | Peak |
+|---:|---:|---:|---:|---:|---|---:|
+| 100 | 1 | 0.31 ms | 1.68 ms | 896 | yes | 9.8 MB |
+| 1 000 | 1 | 2.89 ms | 6.73 ms | 870 | yes | 10.6 MB |
+| 2 332 | 2 | 11.17 ms | 54.9 ms | 886 | yes | 12.3 MB |
+| 2 333 | 2 | 12.05 ms | 51.2 ms | 883 | yes | 12.3 MB |
+| 5 000 | 5 | 19.74 ms | 49.2 ms | 880 | yes | 15.2 MB |
+| 10 000 | 9 | 48.73 ms | 57.2 ms | 879 | yes | 20.7 MB |
+
+Before: `preg_match_all` threw PREG_INTERNAL_ERROR at >= ~2 333
+alternatives — zero matches, fail-safe output, max-age 0.
+
+- Small vocabularies keep the identical single-pattern fast path:
+  100 terms = 1 pattern / 1.68 ms (baseline ~1.9 ms — no regression).
+- Chunk bounds: <= 1 500 alternatives AND <= 16 KB per pattern (both
+  below the observed ~2 333-alt / ~31 KB failure point). Chunked
+  patterns are zero-width lookaheads so overlapping candidates survive;
+  a leftmost-longest greedy merge reproduces single-pattern semantics.
+- Regex cost at large vocabularies is ~50–57 ms/100 KB vs ~7 ms for a
+  single pattern — the price of several scans per text node; acceptable
+  because correctness returns and it is only paid past ~1 500 terms.
